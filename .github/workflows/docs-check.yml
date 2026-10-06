@@ -1,0 +1,20 @@
+name: docs-check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check-refs:
+    # PRIMARY ONLY. The mirror sync strips 0xcc/, .claude/, AGENT.md and
+    # CLAUDE.md, so on hitsainet/miForge both this script and most of the files
+    # it checks are gone. Left ungated, the job would be red on every sync —
+    # the same failure miStudio's mirror had when the sync deleted a file its
+    # own tests required. Both casings, because a non-matching gate skips the
+    # job silently rather than erroring.
+    if: github.repository == 'Onegaishimas/miForge' || github.repository == 'Onegaishimas/miforge'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify framework doc references
+        run: bash 0xcc/scripts/check_refs.sh

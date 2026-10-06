@@ -1,0 +1,186 @@
+name: Build and Push Docker Images
+
+# Runs on the PUBLIC MIRROR only (hitsainet/miForge). The private primary is
+# pushed to; sync-to-clean publishes a filtered snapshot here; this builds and
+# pushes the images to DockerHub. Same shape as miStudio and miLLM.
+#
+# ⚠ NO IMAGES YET. `ALL` is empty until miForge has a Dockerfile. Adding one
+# takes three edits, each marked `ADD IMAGE`: the name in ALL, a path rule in
+# detect, and a case in "Resolve image build parameters".
+#
+# Based on miStudio's copy, whose mirror is an orphan snapshot like this one,
+# with one fix neither sibling has needed: an EMPTY `ALL` must emit `[]`.
+# `printf '%s\n'` with no arguments still prints one empty line, so a verbatim
+# copy emitted `[""]` — a one-image matrix whose image is named "" — and the
+# build job failed on "unknown image" for every tag push and for the very first
+# sync, which has no diff base.
+#
+# miLLM's copy also has a TEST GATE that refuses to publish a backend image over
+# a red `Backend Tests` run. Restore it from there once miForge has a
+# backend-tests workflow; without one it would wait ten minutes and then fail.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  # Manual full rebuild (detect treats a dispatch as "no diff base" → all).
+  workflow_dispatch: {}
+
+jobs:
+  detect:
+    # HARD STOP: only run in hitsainet/miForge (public mirror). Both casings,
+    # because a gate that fails to match skips the job silently.
+    if: github.repository == 'hitsainet/miForge' || github.repository == 'hitsainet/miforge'
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.detect.outputs.images }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history to diff the push range
+
+      - name: Detect changed images
+        id: detect
+        env:
+          BEFORE: ${{ github.event.before }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          # ADD IMAGE: list each image name here, e.g. ALL=(backend frontend)
+          ALL=()
+          emit_all() {
+            # An empty list must emit [], never [""] — see the header.
+            if [ ${#ALL[@]} -eq 0 ]; then echo '[]'; return; fi
+            printf '%s\n' "${ALL[@]}" | jq -R . | jq -cs .
+          }
+
+          # Tag push (release) → full rebuild.
+          if [[ "$REF" == refs/tags/* ]]; then
+            echo "images=$(emit_all)" >> "$GITHUB_OUTPUT"; echo "tag push → all"; exit 0
+          fi
+
+          # Resolve a diff base. main here is FORCE-PUSHED as a parentless orphan
+          # snapshot, so BEFORE (the previous snapshot) is unreachable from main
+          # and a normal fetch won't retrieve it — fetch it by SHA (GitHub serves
+          # unadvertised objects). There is no HEAD~1 to fall back on, so when
+          # BEFORE can't be resolved, build everything rather than silently skip.
+          BASE="$BEFORE"
+          if [ -n "$BASE" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ]; then
+            git cat-file -e "${BASE}^{commit}" 2>/dev/null \
+              || git fetch --no-tags origin "$BASE" 2>/dev/null \
+              || true
+          fi
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "images=$(emit_all)" >> "$GITHUB_OUTPUT"; echo "no usable diff base → all"; exit 0
+          fi
+
+          CHANGED="$(git diff --name-only "$BASE" "$GITHUB_SHA")"
+          echo "--- changed files ---"; echo "$CHANGED"
+
+          declare -A pick=()
+          # ADD IMAGE: one path rule per image, e.g.
+          #   if echo "$CHANGED" | grep -qE '^(backend/|Dockerfile)'; then pick[backend]=1; fi
+
+          OUT=()
+          for img in "${ALL[@]}"; do [ "${pick[$img]:-}" = "1" ] && OUT+=("$img"); done
+          if [ ${#OUT[@]} -eq 0 ]; then
+            echo "images=[]" >> "$GITHUB_OUTPUT"; echo "no image-affecting changes → nothing to build"
+          else
+            JSON="$(printf '%s\n' "${OUT[@]}" | jq -R . | jq -cs .)"
+            echo "images=$JSON" >> "$GITHUB_OUTPUT"; echo "building: $JSON"
+          fi
+
+  build:
+    needs: detect
+    if: (github.repository == 'hitsainet/miForge' || github.repository == 'hitsainet/miforge') && needs.detect.outputs.images != '[]' && needs.detect.outputs.images != ''
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ${{ fromJson(needs.detect.outputs.images) }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Resolve image build parameters
+        id: img
+        run: |
+          case "${{ matrix.name }}" in
+            # ADD IMAGE: one case per image, e.g.
+            # backend)
+            #   echo "repo=hitsai/miforge-backend"     >> "$GITHUB_OUTPUT"
+            #   echo "context=./backend"               >> "$GITHUB_OUTPUT"
+            #   echo "dockerfile=./backend/Dockerfile" >> "$GITHUB_OUTPUT"
+            #   ;;
+            *)
+              echo "ERROR: unknown image '${{ matrix.name }}'"; exit 1
+              ;;
+          esac
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Images embed the repo-root LICENSE. Build contexts are usually
+      # subdirectories; guarded because `cp LICENSE ./` fails as "same file"
+      # when the context is the repo root.
+      - name: Copy LICENSE to build context
+        run: |
+          if [ "${{ steps.img.outputs.context }}" != "." ]; then
+            cp LICENSE "${{ steps.img.outputs.context }}/"
+          fi
+
+      - name: Extract version tag
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            echo "tags=${{ steps.img.outputs.repo }}:latest,${{ steps.img.outputs.repo }}:${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            SHA="${GITHUB_SHA::8}"
+            VERSION="$(cat VERSION 2>/dev/null || echo 0.0.0)+${SHA}"
+            echo "tags=${{ steps.img.outputs.repo }}:latest,${{ steps.img.outputs.repo }}:${SHA}" >> "$GITHUB_OUTPUT"
+          fi
+          # The version the IMAGE reports, passed as a build arg because a
+          # subdirectory build context cannot COPY the repo-root VERSION file.
+          echo "app_version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ${{ matrix.name }} image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ steps.img.outputs.context }}
+          file: ${{ steps.img.outputs.dockerfile }}
+          push: true
+          tags: ${{ steps.version.outputs.tags }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.app_version }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          # mode=max attaches full build-step provenance, which Docker Scout's
+          # supply-chain attestation policy checks for.
+          provenance: mode=max
+          sbom: true
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: index.docker.io/${{ steps.img.outputs.repo }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

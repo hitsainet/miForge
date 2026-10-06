@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "CheckpointManifestV1": {
+      "description": "The manifest.json written beside model.safetensors in every saved checkpoint. Two parties write it: the attached trainer supplies the fields it owns (BRD-02 R-02.20), and miLLM adds the rest at save time (BRD-01 R-01.12). This file is the normative field list for both; neither BRD restates it.",
+      "properties": {
+        "base_model": {
+          "description": "Written by miLLM. The root model this lineage descends from.",
+          "title": "Base Model",
+          "type": "string"
+        },
+        "created_at": {
+          "description": "Written by miLLM. RFC 3339 timestamp of the save.",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "domain": {
+          "description": "Written by the trainer. What this run is biasing the model toward.",
+          "title": "Domain",
+          "type": "string"
+        },
+        "grader_hash": {
+          "anyOf": [{"type": "string"}, {"type": "null"}],
+          "default": null,
+          "description": "Written by the trainer. Hash of the grader configuration (BRD-02 R-02.10). Null when the run used no grader.",
+          "title": "Grader Hash"
+        },
+        "kind": {
+          "const": "miforge.checkpoint-manifest",
+          "default": "miforge.checkpoint-manifest",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "Written by miLLM. The fully qualified name, '<base_model>:<run_id>:step-<step>', with step UNPADDED. This is the display and API form: what /v1/models lists (BRD-01 R-01.15) and what a completion reports as its resolved model.",
+          "title": "Name",
+          "type": "string"
+        },
+        "optimizer": {
+          "$ref": "#/$defs/OptimizerIdentity",
+          "description": "Written by the trainer. Which optimizer produced this step, and whether its state was carried in or started fresh."
+        },
+        "parent": {
+          "anyOf": [{"type": "string"}, {"type": "null"}],
+          "description": "Written by the trainer. The 'name' of the checkpoint this one descends from, or null for a checkpoint saved directly off the base model. This is the edge BRD-01 R-01.16 walks to build lineage.",
+          "title": "Parent"
+        },
+        "retention": {
+          "anyOf": [{"$ref": "#/$defs/ScoreRecord"}, {"type": "null"}],
+          "default": null,
+          "description": "Written by the trainer. The out-of-domain score at this step (BRD-02 R-02.17), carrying the floor the run stops at.",
+          "title": "Retention"
+        },
+        "run_id": {
+          "description": "Written by the trainer. Stable for the life of a run; a new run_id is a new branch (BRD-02 R-02.23).",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "selector_hash": {
+          "anyOf": [{"type": "string"}, {"type": "null"}],
+          "default": null,
+          "description": "Written by the trainer. Hash of the selector configuration (BRD-02 R-02.10). Null when the run used no selector.",
+          "title": "Selector Hash"
+        },
+        "signal_source": {
+          "description": "Written by the trainer. Which signal source produced the batches for this run (BRD-02 section 5.2).",
+          "enum": ["corpus", "self-generation", "preference-pairs", "reward"],
+          "title": "Signal Source",
+          "type": "string"
+        },
+        "step": {
+          "description": "Written by the trainer. THE CANONICAL STEP NUMBER, as an integer. Every rendered form derives from this one value: the checkpoint directory is 'step-' plus this zero-padded to six digits (step-000500), and 'name' is 'step-' plus this unpadded (step-500). Padding in the path exists so directories sort lexicographically; it is a path convention, not part of the step's identity. Nothing may carry the step as a string of its own.",
+          "minimum": 0,
+          "title": "Step",
+          "type": "integer"
+        },
+        "test": {
+          "anyOf": [{"$ref": "#/$defs/ScoreRecord"}, {"type": "null"}],
+          "default": null,
+          "description": "Written by the trainer. The in-domain score at this step (BRD-02 R-02.16, R-02.18). Null when no test ran at this step.",
+          "title": "Test"
+        },
+        "weights_sha256": {
+          "description": "Written by miLLM. Hash of model.safetensors, verified on load (BRD-01 R-01.14). Only ever written from a clean parameter set (BRD-01 R-01.11).",
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Weights Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "step",
+        "domain",
+        "signal_source",
+        "parent",
+        "optimizer",
+        "weights_sha256",
+        "base_model",
+        "created_at",
+        "name"
+      ],
+      "title": "CheckpointManifestV1",
+      "type": "object"
+    },
+    "OptimizerIdentity": {
+      "description": "Which optimizer produced a step, and the provenance of its state.",
+      "properties": {
+        "config_hash": {
+          "anyOf": [{"type": "string"}, {"type": "null"}],
+          "default": null,
+          "description": "Hash of the optimizer hyperparameters (learning rate, warmup, betas, batch size, accumulation).",
+          "title": "Config Hash"
+        },
+        "name": {
+          "description": "For example 'adamw-8bit'.",
+          "title": "Name",
+          "type": "string"
+        },
+        "state": {
+          "description": "'restored' when optimizer state was loaded from trainer-state for the resumed step, 'fresh' when a new optimizer was started on loaded weights. BRD-02 R-02.22 requires this be recorded, because a fresh optimizer on a mid-run checkpoint produces a loss discontinuity that is otherwise unexplained.",
+          "enum": ["restored", "fresh"],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": ["name", "state"],
+      "title": "OptimizerIdentity",
+      "type": "object"
+    },
+    "ScoreRecord": {
+      "description": "A score against a named evaluation set at one step.",
+      "properties": {
+        "floor": {
+          "anyOf": [{"type": "number"}, {"type": "null"}],
+          "default": null,
+          "description": "The value the run stops below. Set for retention (BRD-02 R-02.25); normally null for test.",
+          "title": "Floor"
+        },
+        "n": {
+          "description": "How many prompts were scored.",
+          "minimum": 1,
+          "title": "N",
+          "type": "integer"
+        },
+        "score": {
+          "description": "The score, normalised to 0..1.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "set": {
+          "description": "Identifier of the evaluation set that produced this score.",
+          "title": "Set",
+          "type": "string"
+        }
+      },
+      "required": ["set", "score", "n"],
+      "title": "ScoreRecord",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/CheckpointManifestV1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
