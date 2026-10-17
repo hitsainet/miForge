@@ -1,0 +1,119 @@
+name: Sync main → gitops/pilot
+
+# Auto-syncs main into the `gitops/pilot` BRANCH on every push to main (foundation
+# task 8.4; ADR-019). Copied from miLLM's workflow of the same name, which copied the
+# WASAT monorepo's.
+#
+# ── WHY THIS EXISTS ────────────────────────────────────────────────────────────────
+# `gitops/pilot` is the branch ArgoCD reads (gitops/pilot/argocd/miforge-app.yaml sets
+# `targetRevision: gitops/pilot`). The only OTHER writer on that branch is ArgoCD
+# Image Updater, which commits digest pins to the parameter-override file. Without this
+# workflow, a manifest change on main would never reach the cluster.
+#
+# ── WHY A MERGE AND THEN A HARD CONVERGE, RATHER THAN A FORCE-PUSH ────────────────
+# A force-push of main onto gitops/pilot would discard Image Updater's pin commit, and
+# ArgoCD would roll back to the `newTag: latest` default in the kustomization — i.e. a
+# deploy of main would silently un-pin the running digest. So: merge with `-X theirs`
+# (main is canonical), then hard-reset every tracked path to main's content EXCEPT the
+# pin file, then push with retry against a race with Image Updater's own commit.
+#
+# ── THE PIN FILE IS NAMED TWICE AND MUST AGREE ───────────────────────────────────
+# `gitops/pilot/.argocd-source-miforge.yaml` is Image Updater's DEFAULT write-back
+# target for a Kustomize application: `<spec.source.path>/.argocd-source-<app name>.yaml`.
+# The Application's name is `miforge` and its path is `gitops/pilot`, so that is the
+# filename. If either is ever changed, change the exclude below in the same commit —
+# otherwise this workflow deletes the pin on the next push to main and the cluster
+# un-pins, which looks like an Image Updater failure and is not one.
+#
+# ⚠ NEVER on main: the pin file is written only on gitops/pilot. There is deliberately
+# no copy of it in this repository's tree.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+concurrency:
+  # Serialised: two concurrent syncs would race each other onto the same branch, and
+  # the loser's retry would rebase over a half-converged tree.
+  group: sync-main-to-gitops-pilot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    # HARD STOP: the private primary only. Both casings, because a gate that fails to
+    # match does not error — the job is silently skipped, which reads as success.
+    if: github.repository == 'Onegaishimas/miForge' || github.repository == 'Onegaishimas/miforge'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gitops/pilot
+        uses: actions/checkout@v4
+        with:
+          ref: gitops/pilot
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Skip if gitops/pilot already contains main
+        id: skip_check
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "gitops/pilot already up to date with main — no merge needed"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge main with -X theirs (main is canonical for non-pin files)
+        if: steps.skip_check.outputs.skip != 'true'
+        run: |
+          git merge --no-ff --no-edit -X theirs origin/main || {
+            echo "::error::Merge failed despite the -X theirs strategy — needs operator attention"
+            git status
+            exit 1
+          }
+
+      - name: Converge non-pin files to main (drop gitops/pilot-only drift)
+        if: steps.skip_check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          # main is the single source of truth for everything except the one file
+          # Image Updater owns. Reset all tracked paths to main's exact content so a
+          # hand-edit made on gitops/pilot during an incident does not survive as
+          # invisible drift between the repository and the cluster.
+          git checkout origin/main -- . \
+            ':(exclude)gitops/pilot/.argocd-source-miforge.yaml'
+          if git diff --cached --quiet; then
+            echo "Already converged with main (no drift to drop)."
+          else
+            git --no-pager diff --cached --stat
+            git commit --no-edit -m "sync: converge non-pin files to main (drop gitops/pilot drift)"
+          fi
+
+      - name: Push, retrying on a race with Image Updater
+        if: steps.skip_check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if git push origin gitops/pilot; then
+              echo "Pushed successfully on attempt ${attempt}"
+              exit 0
+            fi
+            echo "Push attempt ${attempt} failed; fetching and rebasing"
+            git pull --rebase -X theirs origin gitops/pilot || {
+              echo "::error::Rebase failed during retry — needs operator attention"
+              exit 1
+            }
+          done
+          echo "::error::Push failed after 3 retries — needs operator attention"
+          exit 1

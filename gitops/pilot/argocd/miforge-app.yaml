@@ -1,0 +1,189 @@
+# ArgoCD GitOps definition for miForge (foundation tasks 8.5 and 8.6; ADR-019).
+#
+# Apply ONCE BY HAND; ArgoCD manages the workloads from then on:
+#     kubectl apply -f gitops/pilot/argocd/miforge-app.yaml
+#
+# ⚠ This file is NOT in `kustomization.yaml`, so ArgoCD never manages the Application
+# that defines it. That is the shape miLLM, miStudio and miDataworks all use.
+#
+# Flow (mirrors the siblings):
+#   push to Onegaishimas/miForge main
+#     → sync-main-to-gitops-pilot.yml merges main → the gitops/pilot BRANCH
+#     → sync-to-clean.yml publishes a filtered orphan snapshot to hitsainet/miForge
+#     → docker-images.yml (on the MIRROR) builds only the changed images
+#     → ArgoCD Image Updater sees the new :latest digest on Docker Hub and commits a
+#       pin to gitops/pilot (.argocd-source-miforge.yaml)
+#     → ArgoCD syncs gitops/pilot and rolls the Deployments
+#
+# ⚠ THE SOURCE IS THE PRIVATE PRIMARY, NOT THE PUBLIC MIRROR. The manifests live on the
+# private repository's gitops/pilot branch; only the IMAGES come from the mirror's CI.
+# That is why the repo credential below is needed and why it is an operator action.
+#
+# ── ONE-TIME PREREQUISITES, NONE OF THEM IN GIT ───────────────────────────────────
+#  1. The `miforge-secrets` Secret in the `miforge` namespace. The generation command is
+#     in `gitops/pilot/postgres.yaml`'s header. Nothing starts without POSTGRES_PASSWORD.
+#  2. `kubectl apply -f gitops/pilot/storage.yaml` — the PersistentVolumes and claims.
+#     Deliberately outside the kustomization (see its header). ⚠ WITHOUT THIS EVERY POD
+#     SITS `Pending` AND THE ONLY TRACE IS A SCHEDULER MESSAGE — which is exactly how
+#     Neuronpedia stayed down for 19 days.
+#  3. An ArgoCD repo credential Secret in the `argocd` namespace for
+#     https://github.com/Onegaishimas/miForge.git. **DONE 2026-10-16** —
+#     `miforge-repo-creds` exists, labelled `argocd.argoproj.io/secret-type: repository`,
+#     carrying the same PAT as the three siblings (verified by hashing the values, never
+#     reading them). This repo is now configured exactly as miLLM, miStudio and
+#     miDataworks are.
+#
+# ── ~~THE INTERIM SOURCE: THE PUBLIC MIRROR, 2026-10-14~~ CLOSED 2026-10-16 ──────────
+# **THE DEVIATION BELOW IS OVER. The Application reads the PRIVATE PRIMARY, as this file
+# has always said it should, and everything the block calls impossible now works.** Kept
+# struck through rather than deleted, because the reasoning is still correct about why a
+# pin must never be written to the mirror.
+#
+# What closed it: the repo credential (prerequisite 3) was placed, then this file was
+# applied as committed — Application → primary `gitops/pilot`, AppProject narrowed to the
+# primary alone, in one `kubectl apply`. No manifest change was needed; the live cluster
+# was the deviation and this file was already right.
+#
+# Demonstrated end to end, not inferred. Image Updater had logged
+# `errors=1` every two minutes since the app was registered; it now logs
+# `images_updated=2 errors=0` and has committed `gitops/pilot/.argocd-source-miforge.yaml`
+# three times. A push then went the whole way round on its own: commit `b1f57c3` → sync →
+# Backend Tests (SQLite and PostgreSQL both green) → image build → NEW digests
+# (backend `706ba4c8…`, frontend `350c3e47…`) → Image Updater pinned them to git →
+# ArgoCD synced → both Deployments rolled → all six backend containers ready, zero
+# restarts, `/api/health` 200. The Ingress progression 404 → 503 → 200 is complete.
+#
+# ⚠ The one thing that did NOT change: the sync still force-overwrites the mirror on every
+# push to main, so Image Updater must still never be given push access there. The pin is
+# written to the PRIMARY's `gitops/pilot` branch, which is why this works.
+#
+# ── the historical block, for the reasoning only ──────────────────────────────────────
+# **Deployed from `hitsainet/miForge` `main` rather than the private primary's
+# `gitops/pilot` branch, because the mirror needs no credential and the primary does.**
+# `gitops/` is not on the sync's exclusion list, so the filtered orphan snapshot carries
+# all nine manifests and the kustomization — verified by independent clone, not assumed.
+#
+# ~~This was a deliberate trade, and the cost is one thing: **ArgoCD Image Updater cannot
+# write digest pins back.**~~ *(No longer true as of 2026-10-16 — it does.)* It would need push access to the mirror, which it must never
+# have — the sync force-overwrites that repo on every push to main, so a pin written there
+# would be destroyed by the next commit. So images track `:latest` and the deployment is
+# not digest-pinned, which ADR-019 wants and which the siblings have.
+#
+# **What it bought:** the Application went from `ComparisonError: authentication required`
+# to `Synced` with postgres and redis `Running`, and the Ingress from a 404 to a 503 — the
+# routing proved correct with only the images missing. Every part of the chain except the
+# image build is now demonstrated rather than assumed.
+#
+# **To go back** once the repo credential exists (one patch each, and the AppProject must
+# permit the URL or the Application reports `InvalidSpecError`):
+#     kubectl patch application miforge -n argocd --type merge -p \
+#       '{"spec":{"source":{"repoURL":"https://github.com/Onegaishimas/miForge.git",
+#          "targetRevision":"gitops/pilot"}}}'
+# and restore `sourceRepos` to the primary alone. The file below is left pointing at the
+# PRIMARY on purpose: it is the intended end state, and this block is the deviation.
+#  4. The `gitops/pilot` branch created from main. The sync workflow merges into it; it
+#     does not create it.
+#  5. `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` on hitsainet/miForge. ⚠ NOT SET as of
+#     2026-10-14; the first image build needs them. Same values as hitsainet/miLLM, but
+#     GitHub never reveals a secret's value so they cannot be copied across — the
+#     operator must set them from the source.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: miforge
+  namespace: argocd
+spec:
+  description: miForge — makes weights (creation, adaptation and the domain loop)
+  sourceRepos:
+    - https://github.com/Onegaishimas/miForge.git
+  destinations:
+    - namespace: miforge
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    # The Namespace object is part of the kustomization, so a cluster-scoped kind must
+    # be permitted. PersistentVolumes are cluster-scoped too but are NOT managed here —
+    # `storage.yaml` is applied by hand on purpose.
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  # ⚠ THE NAME DECIDES THE PIN FILE'S NAME. Image Updater's default write-back target
+  # for a Kustomize application is `<spec.source.path>/.argocd-source-<name>.yaml`, so
+  # this being `miforge` is what makes it `gitops/pilot/.argocd-source-miforge.yaml` —
+  # the exact path `sync-main-to-gitops-pilot.yml` excludes from its converge step.
+  # Change one and change the other in the same commit, or a push to main deletes the
+  # running pin and the cluster un-pins, which looks like an Image Updater fault and is
+  # not one.
+  name: miforge
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: miforge
+  annotations:
+    # ── ArgoCD Image Updater ──────────────────────────────────────────────────────
+    # Track :latest BY DIGEST, the strategy the whole suite uses. Every new push of
+    # hitsai/miforge-*:latest to Docker Hub is pinned by digest and committed to
+    # gitops/pilot, which ArgoCD then syncs.
+    argocd-image-updater.argoproj.io/image-list: backend=docker.io/hitsai/miforge-backend:latest, frontend=docker.io/hitsai/miforge-frontend:latest
+    argocd-image-updater.argoproj.io/backend.update-strategy: digest
+    argocd-image-updater.argoproj.io/backend.kustomize.image-name: hitsai/miforge-backend
+    argocd-image-updater.argoproj.io/frontend.update-strategy: digest
+    argocd-image-updater.argoproj.io/frontend.kustomize.image-name: hitsai/miforge-frontend
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/git-branch: gitops/pilot
+spec:
+  project: miforge
+  source:
+    repoURL: https://github.com/Onegaishimas/miForge.git
+    targetRevision: gitops/pilot
+    path: gitops/pilot
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: miforge
+  revisionHistoryLimit: 10
+  syncPolicy:
+    automated:
+      selfHeal: true
+      # ⚠ `prune` DELIBERATELY NOT ENABLED. The siblings each left it off for a burn-in
+      # period, and there is a sharper reason here: miForge's product is a directory of
+      # files on a retained volume, and a prune that caught a claim would be the one
+      # ArgoCD operation that could cost an artifact rather than a restart. `storage.yaml`
+      # being outside this Application is the real guard; this is the second one.
+    syncOptions:
+      - ServerSideApply=true
+  ignoreDifferences:
+    # Tolerate `kubectl rollout restart` and `kubectl set env` during incident response
+    # without selfHeal fighting over the restartedAt annotation.
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
+---
+# This cluster runs the CRD-based Image Updater: an Application is reconciled only when
+# selected by an ImageUpdater resource. `useAnnotations` pulls the per-image
+# configuration from the Application annotations above, so there is one place to read
+# rather than two that can disagree.
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: miforge-images
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: miforge
+      useAnnotations: true
+  commonUpdateSettings:
+    forceUpdate: false
+    pullSecret: pullsecret:argocd/regcred
+    updateStrategy: digest
+  writeBackConfig:
+    method: git
+    gitConfig:
+      branch: gitops/pilot
+      # No writeBackTarget: the default parameter-override file
+      # (gitops/pilot/.argocd-source-miforge.yaml) is used for this Kustomize app.

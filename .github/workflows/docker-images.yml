@@ -1,0 +1,295 @@
+name: Build and Push Docker Images
+
+# Runs on the PUBLIC MIRROR only (hitsainet/miForge). The private primary is
+# pushed to; sync-to-clean publishes a filtered snapshot here; this builds and
+# pushes the images to DockerHub. Same shape as miStudio and miLLM.
+#
+# TWO IMAGES (foundation task 8.3; ADR-019):
+#
+#   hitsai/miforge-backend    the API, every Celery worker and the training loop.
+#                             ONE image; the k8s manifest's `command:` picks the
+#                             process. GPU-capable: torch bundles its own CUDA and
+#                             the node's default nvidia runtime provides the device.
+#   hitsai/miforge-frontend   nginx-unprivileged serving the built React app on 8080.
+#
+# Each image is three edits, each marked `ADD IMAGE`: the name in ALL, a path rule in
+# detect, and a case in "Resolve image build parameters". The empty-`ALL` guard below
+# is kept even though ALL is no longer empty — it costs one line and the failure it
+# prevents is a matrix whose image is named "".
+#
+# Based on miStudio's copy, whose mirror is an orphan snapshot like this one,
+# with one fix neither sibling has needed: an EMPTY `ALL` must emit `[]`.
+# `printf '%s\n'` with no arguments still prints one empty line, so a verbatim
+# copy emitted `[""]` — a one-image matrix whose image is named "" — and the
+# build job failed on "unknown image" for every tag push and for the very first
+# sync, which has no diff base.
+#
+# miLLM's copy also has a TEST GATE that refuses to publish a backend image over
+# a red `Backend Tests` run. It was left out while miForge had no test workflow,
+# because without one it would wait ten minutes and then fail.
+#
+# ✅ RESTORED (foundation task 1.8). The `test-gate` job below refuses to publish over
+# a suite that did not pass. Three things about it that are not obvious:
+#
+# 1. It selects on the workflow NAME `Backend Tests`, which is `backend-tests.yml`'s
+#    `name:`, and it queries by `head_sha` rather than by event.
+#
+# 2. `head_sha` is what makes TAG pushes work, and this is the subtle part. This
+#    workflow runs on `main` pushes AND on `v*` tags; `backend-tests.yml` runs on
+#    `main` pushes only. So a tag push has no Backend Tests run OF ITS OWN. It still
+#    finds one because the orphan-snapshot sync force-pushes `clean:main` and then
+#    tags THAT SAME COMMIT — so the tag's `head_sha` is the branch push's `head_sha`,
+#    and the run already exists. **If the sync is ever changed to tag a different
+#    commit than main, this gate stops finding a run and every release is blocked.**
+#    A note was left to the effect that "there is always a run for every commit on
+#    main" — true for branch pushes, and it does not by itself cover the tag case.
+#
+# 3. **No run means REFUSE.** miLLM's copy carries ~70 lines of fallback that diff
+#    backend source when no run exists, because its `backend-tests.yml` has `paths:`
+#    filters that can legitimately produce no run. miForge's carries none, so the only
+#    ways to reach "no run" here are a misconfiguration or a dispatch on a commit that
+#    predates the test workflow — and in both cases publishing would mean shipping an
+#    image over an unverified suite. ADR-018: fail closed where correctness is at
+#    stake; a visible refusal is recoverable and a silently unverified image is not.
+#
+# One trap inherited from miLLM's hard-won comment: `last` on an empty array is `null`,
+# and `"\(.status) \(.conclusion)"` renders that as the literal string "null null" —
+# NOT empty. Their no-run branch was therefore unreachable for weeks. The `if . == null
+# then ""` below is load-bearing; do not simplify it away.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  # Manual full rebuild (detect treats a dispatch as "no diff base" → all).
+  workflow_dispatch: {}
+
+# Least privilege (CodeQL actions/missing-workflow-permissions, alert 2): the default for
+# every job is read-only; test-gate and build widen it in their own blocks.
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    # HARD STOP: only run in hitsainet/miForge (public mirror). Both casings,
+    # because a gate that fails to match skips the job silently.
+    if: github.repository == 'hitsainet/miForge' || github.repository == 'hitsainet/miforge'
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.detect.outputs.images }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history to diff the push range
+
+      - name: Detect changed images
+        id: detect
+        env:
+          BEFORE: ${{ github.event.before }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          # ADD IMAGE: list each image name here.
+          ALL=(backend frontend)
+          emit_all() {
+            # An empty list must emit [], never [""] — see the header.
+            if [ ${#ALL[@]} -eq 0 ]; then echo '[]'; return; fi
+            printf '%s\n' "${ALL[@]}" | jq -R . | jq -cs .
+          }
+
+          # Tag push (release) → full rebuild.
+          if [[ "$REF" == refs/tags/* ]]; then
+            echo "images=$(emit_all)" >> "$GITHUB_OUTPUT"; echo "tag push → all"; exit 0
+          fi
+
+          # Resolve a diff base. main here is FORCE-PUSHED as a parentless orphan
+          # snapshot, so BEFORE (the previous snapshot) is unreachable from main
+          # and a normal fetch won't retrieve it — fetch it by SHA (GitHub serves
+          # unadvertised objects). There is no HEAD~1 to fall back on, so when
+          # BEFORE can't be resolved, build everything rather than silently skip.
+          BASE="$BEFORE"
+          if [ -n "$BASE" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ]; then
+            git cat-file -e "${BASE}^{commit}" 2>/dev/null \
+              || git fetch --no-tags origin "$BASE" 2>/dev/null \
+              || true
+          fi
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "images=$(emit_all)" >> "$GITHUB_OUTPUT"; echo "no usable diff base → all"; exit 0
+          fi
+
+          CHANGED="$(git diff --name-only "$BASE" "$GITHUB_SHA")"
+          echo "--- changed files ---"; echo "$CHANGED"
+
+          declare -A pick=()
+          # ADD IMAGE: one path rule per image.
+          #
+          # The backend's rule is wider than `backend/` because its build CONTEXT is the
+          # repository root — `pyproject.toml` holds the dependency pins and the package
+          # layout, so a change there changes the image even though no file under
+          # `backend/` moved. `docs/schemas/` is copied in so a running container has the
+          # vendored contracts it writes against; a schema change must therefore rebuild.
+          # `LICENSE` is embedded in both images (see "Copy LICENSE to build context").
+          if echo "$CHANGED" | grep -qE '^(backend/|pyproject\.toml|docs/schemas/|\.dockerignore|LICENSE)'; then pick[backend]=1; fi
+          if echo "$CHANGED" | grep -qE '^(frontend/|LICENSE)'; then pick[frontend]=1; fi
+
+          OUT=()
+          for img in "${ALL[@]}"; do [ "${pick[$img]:-}" = "1" ] && OUT+=("$img"); done
+          if [ ${#OUT[@]} -eq 0 ]; then
+            echo "images=[]" >> "$GITHUB_OUTPUT"; echo "no image-affecting changes → nothing to build"
+          else
+            JSON="$(printf '%s\n' "${OUT[@]}" | jq -R . | jq -cs .)"
+            echo "images=$JSON" >> "$GITHUB_OUTPUT"; echo "building: $JSON"
+          fi
+
+
+  # ---------------------------------------------------------------------------------
+  # Foundation task 1.8 — refuse to publish over a red or missing suite.
+  # ---------------------------------------------------------------------------------
+  test-gate:
+    name: Require Backend Tests to have passed
+    runs-on: ubuntu-latest
+    needs: detect
+    if: (github.repository == 'hitsainet/miForge' || github.repository == 'hitsainet/miforge') && needs.detect.outputs.images != '[]' && needs.detect.outputs.images != ''
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require Backend Tests to have passed for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Poll: the two workflows start together, so the suite is usually still
+          # running when this begins. 60 x 20s = 20 minutes, which comfortably covers
+          # the PostgreSQL leg (it runs serially on purpose — see backend-tests.yml).
+          for attempt in $(seq 1 60); do
+            RUN="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100" \
+              --jq '[.workflow_runs[] | select(.name=="Backend Tests")]
+                    | sort_by(.created_at) | last
+                    | if . == null then "" else "\(.status) \(.conclusion)" end' 2>/dev/null || echo "")"
+
+            case "$RUN" in
+              "completed success")
+                echo "Backend Tests passed for ${SHA} — publishing."
+                exit 0 ;;
+              "completed "*)
+                echo "::error::Backend Tests did not pass for ${SHA} (${RUN}). Refusing to publish an image over a suite that did not pass."
+                exit 1 ;;
+              "")
+                echo "waiting for a Backend Tests run to be created (${attempt}/60)" ;;
+              *)
+                echo "waiting for Backend Tests (${attempt}/60): ${RUN}" ;;
+            esac
+            sleep 20
+          done
+
+          # Fall through = never completed, or never existed. Both refuse.
+          echo "::error::No completed Backend Tests run for ${SHA} after 20 minutes. Refusing to publish: an image built over an unverified suite is exactly what this gate exists to prevent. If this was a tag push, check that the sync tagged the same commit as main — the gate finds the branch push's run by head_sha."
+          exit 1
+
+  build:
+    needs: [detect, test-gate]
+    if: (github.repository == 'hitsainet/miForge' || github.repository == 'hitsainet/miforge') && needs.detect.outputs.images != '[]' && needs.detect.outputs.images != ''
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ${{ fromJson(needs.detect.outputs.images) }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Resolve image build parameters
+        id: img
+        run: |
+          case "${{ matrix.name }}" in
+            # ADD IMAGE: one case per image.
+            backend)
+              # CONTEXT IS THE REPOSITORY ROOT, not ./backend. `pip install .` needs
+              # pyproject.toml, which lives at the root and declares `backend/src` as
+              # the package root — a ./backend context cannot see it. `.dockerignore`
+              # is what keeps that wide context from shipping 0xcc/, .venv/ and
+              # node_modules/ into the build.
+              echo "repo=hitsai/miforge-backend"       >> "$GITHUB_OUTPUT"
+              echo "context=."                         >> "$GITHUB_OUTPUT"
+              echo "dockerfile=./backend/Dockerfile"   >> "$GITHUB_OUTPUT"
+              ;;
+            frontend)
+              echo "repo=hitsai/miforge-frontend"      >> "$GITHUB_OUTPUT"
+              echo "context=./frontend"                >> "$GITHUB_OUTPUT"
+              echo "dockerfile=./frontend/Dockerfile"  >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "ERROR: unknown image '${{ matrix.name }}'"; exit 1
+              ;;
+          esac
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Images embed the repo-root LICENSE. Build contexts are usually
+      # subdirectories; guarded because `cp LICENSE ./` fails as "same file"
+      # when the context is the repo root.
+      - name: Copy LICENSE to build context
+        run: |
+          if [ "${{ steps.img.outputs.context }}" != "." ]; then
+            cp LICENSE "${{ steps.img.outputs.context }}/"
+          fi
+
+      - name: Extract version tag
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            echo "tags=${{ steps.img.outputs.repo }}:latest,${{ steps.img.outputs.repo }}:${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            SHA="${GITHUB_SHA::8}"
+            VERSION="$(cat VERSION 2>/dev/null || echo 0.0.0)+${SHA}"
+            echo "tags=${{ steps.img.outputs.repo }}:latest,${{ steps.img.outputs.repo }}:${SHA}" >> "$GITHUB_OUTPUT"
+          fi
+          # The version the IMAGE reports, passed as a build arg because a
+          # subdirectory build context cannot COPY the repo-root VERSION file.
+          echo "app_version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ${{ matrix.name }} image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ steps.img.outputs.context }}
+          file: ${{ steps.img.outputs.dockerfile }}
+          push: true
+          tags: ${{ steps.version.outputs.tags }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.app_version }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          # mode=max attaches full build-step provenance, which Docker Scout's
+          # supply-chain attestation policy checks for.
+          provenance: mode=max
+          sbom: true
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: index.docker.io/${{ steps.img.outputs.repo }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

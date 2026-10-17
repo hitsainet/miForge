@@ -1,0 +1,174 @@
+name: Sync to Clean Repository
+
+# Publishes a FILTERED, SINGLE-COMMIT snapshot of this private repo to the
+# public mirror (hitsainet/miForge). Adapted from miStudio's sync, which is the
+# hardened version — NOT miLLM's, which still force-pushes the branch itself.
+#
+# ── WHY AN ORPHAN COMMIT, NOT A FILTERED BRANCH ─────────────────────────────
+# Removing excluded paths and force-pushing `main` leaves the TIP clean but
+# ships every earlier commit with it, so any excluded file stays one
+# `git show HEAD~1:<path>` away. GitHub serves commits by SHA whether or not
+# they are reachable, so a later force-push does not retract them. miStudio
+# published an SSH password and five database dumps exactly that way
+# (MIS-E2E-143).
+#
+# `git checkout --orphan` creates a commit with NO PARENTS. Excluded by
+# construction: there is no history to leak because none is pushed.
+#
+# ── WHAT DIFFERS FROM miStudio'S COPY, AND WHY ─────────────────────────────
+# * AGENT.md and GEMINI.md are excluded. In the xcc template CLAUDE.md is only
+#   `@AGENT.md`; the real project memory lives in AGENT.md, which miStudio's
+#   list does not name. Copied verbatim, this would have published every
+#   status note and decision recorded there.
+# * No `deploy-manual` dispatch: miForge has no manual yet.
+# * Verify requires README.md and LICENSE instead of miStudio's docs/
+#   contracts, so it cannot pass vacuously on an empty snapshot.
+# * Tag retargeting tolerates a mirror with no tags, which the first run has.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    # HARD STOP: only run in the private source repo. Both casings, because a
+    # gate that fails to match does not error — the job is silently skipped.
+    if: github.repository == 'Onegaishimas/miForge' || github.repository == 'Onegaishimas/miforge'
+
+    runs-on: ubuntu-latest
+
+    env:
+      MIRROR: hitsainet/miForge
+
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+        with:
+          # A snapshot needs no history; fetching it is what made the leak possible.
+          fetch-depth: 1
+          # A tag event must snapshot the tagged tree, not whatever main is.
+          ref: ${{ github.ref }}
+
+      - name: Remove excluded files and folders
+        run: |
+          set -euo pipefail
+          rm -rf 0xcc/
+          rm -rf .claude/
+          rm -f CLAUDE.md AGENT.md GEMINI.md
+          rm -rf backups/
+          rm -rf scripts/
+          rm -rf .understand-anything/
+          # docs/ is dev-internal except vendored public contracts under
+          # docs/schemas/, matching miStudio and miLLM. Guarded because `find`
+          # on a missing directory exits non-zero and would fail this step.
+          if [ -d docs ]; then
+            find docs/ -mindepth 1 -maxdepth 1 ! -name schemas -exec rm -rf {} +
+          fi
+          echo "Removed excluded files"
+
+      - name: Build the orphan snapshot
+        run: |
+          set -euo pipefail
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+
+          VERSION="$(cat VERSION 2>/dev/null || echo unknown)"
+
+          git checkout --orphan clean
+          git add -A
+          git commit -m "miForge ${VERSION} — filtered snapshot from ${GITHUB_SHA::7}"
+
+          PARENTS="$(git rev-list --parents -n1 HEAD | wc -w)"
+          if [ "$PARENTS" -ne 1 ]; then
+            echo "::error::orphan commit has parents — refusing to push"
+            exit 1
+          fi
+          echo "Built orphan snapshot: $(git rev-parse --short HEAD)"
+
+      - name: Push to clean repository
+        env:
+          SYNC_TOKEN: ${{ secrets.HITSAINET_SYNC }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SYNC_TOKEN}" ]; then
+            echo "::error::HITSAINET_SYNC is not set on this repo, so nothing can be pushed"
+            exit 1
+          fi
+          git config --unset-all http.https://github.com/.extraheader || true
+          git config --global --unset-all http.https://github.com/.extraheader || true
+
+          REMOTE="https://x-access-token:${SYNC_TOKEN}@github.com/${MIRROR}.git"
+          git push --force "$REMOTE" clean:main
+
+          # Tags must point at the orphan, never the source commit: pushing a
+          # source tag pushes that commit AND its ancestors, reintroducing the
+          # history the snapshot exists to exclude.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            git tag -f "$TAG" HEAD
+            git push --force "$REMOTE" "refs/tags/${TAG}"
+            echo "Tagged the orphan snapshot as ${TAG}"
+          fi
+
+          # Retarget stale tags: any other ref keeps old commits reachable, and
+          # a clone then fetches the whole history back. `|| true` because the
+          # first run finds no tags, and grep -v on empty input exits 1.
+          for ref in $(git ls-remote --tags "$REMOTE" | awk '{print $2}' | grep -v '\^{}$' || true); do
+            T="${ref#refs/tags/}"
+            git tag -f "$T" HEAD
+            git push --force "$REMOTE" "refs/tags/${T}"
+            echo "Retargeted stale tag ${T} onto the snapshot"
+          done
+
+      # The check whose absence let MIS-E2E-143 run unnoticed for months: clone
+      # the PUBLISHED result and assert the exclusions hold in every commit.
+      - name: Verify the published mirror
+        env:
+          SYNC_TOKEN: ${{ secrets.HITSAINET_SYNC }}
+        run: |
+          set -euo pipefail
+          REMOTE="https://x-access-token:${SYNC_TOKEN}@github.com/${MIRROR}.git"
+          rm -rf /tmp/verify
+          git clone --quiet "$REMOTE" /tmp/verify
+          cd /tmp/verify
+
+          FAILED=0
+
+          # --all covers tags too: a tag on old history keeps it reachable even
+          # when main is a clean orphan.
+          COMMITS="$(git rev-list --all --count)"
+          echo "Published commits: ${COMMITS}"
+          if [ "$COMMITS" -ne 1 ]; then
+            echo "::error::mirror has ${COMMITS} commits; a snapshot must have exactly 1"
+            echo "::error::a ref other than main is probably anchoring old history:"
+            git show-ref | sed 's/^/    /'
+            FAILED=1
+          fi
+
+          for p in 0xcc .claude CLAUDE.md AGENT.md GEMINI.md backups scripts .understand-anything; do
+            if [ -n "$(git log --all --oneline -- "$p" 2>/dev/null)" ]; then
+              echo "::error::LEAK — '${p}' is present in published history"
+              FAILED=1
+            fi
+          done
+
+          # Positive control. A clone that silently came back empty would pass
+          # every absence check above, so these must be present.
+          for p in README.md LICENSE; do
+            if [ ! -e "$p" ]; then
+              echo "::error::MISSING — '${p}' must be published but is absent"
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::mirror verification FAILED"
+            exit 1
+          fi
+          echo "Mirror verified: 1 commit, no excluded path in any commit."

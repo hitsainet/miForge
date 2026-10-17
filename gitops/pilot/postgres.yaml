@@ -1,0 +1,114 @@
+# PostgreSQL 15 — miForge's INDEX, not its record (ADR-003, ADR-004).
+#
+# What is in here: run metadata, step records, the pack registry, the checkpoint index.
+# What makes it different from the siblings' databases: **losing all of it loses no
+# artifact.** `manifest.json` beside each checkpoint is authoritative, and `reindex`
+# (task 4.3) rebuilds every row from manifests alone, with a test asserting the rebuilt
+# database produces identical API responses (task 4.4, ADR-016 #4). Where the two
+# disagree the manifest wins and the disagreement is logged.
+#
+# ⚠ ONE EXCEPTION, AND IT IS THE REASON THIS IS STILL BACKED BY A RETAINED VOLUME:
+# the pack registry has NO on-disk manifest. ADR-003 puts it here while ADR-004 makes
+# the filesystem authoritative for produced artifacts, and packs are the one artifact
+# with neither — so losing this database loses every unexported pack. That gap is
+# recorded as a design question (AGENT.md, wave-1 finding 10) and must be settled before
+# anything adds a pack assertion to the reindex-equivalence test.
+#
+# ── SECRETS ARE CREATED OUT OF BAND ───────────────────────────────────────────────
+# Never committed: this repository publishes a filtered snapshot to a PUBLIC mirror, and
+# `gitops/` is not on the exclusion list. One Secret, generated in place so no value is
+# ever typed or pasted:
+#
+#   kubectl create secret generic miforge-secrets -n miforge \
+#     --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+#
+# Hex on purpose: POSTGRES_PASSWORD is interpolated into DATABASE_URL (backend.yaml),
+# where a '@', '/' or ':' would break the URL.
+#
+# The optional §5.10 `trainer` bearer token and its audit label go in the same Secret,
+# and only when the hot-update mode is actually wanted (ADR-020, ADR-022):
+#
+#   kubectl -n miforge patch secret miforge-secrets --type merge \
+#     -p '{"stringData":{"MILLM_TRAINER_TOKEN":"<from miLLM>","MILLM_AUDIT_LABEL":"miforge@<host>"}}'
+#
+# ⚠ The audit label is not decoration. It is what makes a weights change attributable in
+# miLLM's log, so a token without one is a change nobody can attribute.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miforge-postgres
+  namespace: miforge
+  annotations:
+    # Second guard on the data, after keeping `storage.yaml` out of the sync: ArgoCD
+    # must never prune or delete this, whatever the manifest tree says. miLLM's pattern.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  replicas: 1
+  # Recreate, never RollingUpdate: two postgres pods must never share one PGDATA
+  # directory, and a rolling update would briefly run both.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: miforge-postgres
+  template:
+    metadata:
+      labels:
+        app: miforge-postgres
+    spec:
+      # PINNED. The claim below is a node-affine local volume, so this pod can only run
+      # where the data is. Stated here as well as on the PV because a scheduling failure
+      # that names the node is a better diagnosis than `volume node affinity conflict`.
+      nodeSelector:
+        kubernetes.io/hostname: mcs-lnxhost02
+      containers:
+        - name: postgres
+          image: postgres:15
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: miforge
+            - name: POSTGRES_DB
+              value: miforge
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: POSTGRES_PASSWORD
+            # The image refuses to initialise into a non-empty directory, and a
+            # hostPath-backed volume root may hold `lost+found`. A subdirectory is the
+            # standard answer.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "miforge", "-d", "miforge"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            # Created by `storage.yaml`, applied by hand. If this claim does not exist
+            # the pod sits Pending — which is the intended failure: it is louder than a
+            # DirectoryOrCreate hostPath coming up healthy against an empty database.
+            claimName: miforge-pgdata
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: miforge
+spec:
+  selector:
+    app: miforge-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

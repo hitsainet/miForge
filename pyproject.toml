@@ -1,0 +1,209 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miforge"
+version = "0.1.0"
+description = "miForge makes weights - creating them from scratch, changing them in place, or adding adapters that compose with them."
+# ADR-002 names Python 3.11. The floor is 3.11 with NO ceiling, matching miLLM's
+# `requires-python = ">=3.11"`, because the GPU node has only 3.12 installed
+# (`/usr/bin/python3.12`, no 3.11) - a `<3.12` pin would make this package
+# uninstallable on the only machine that runs it. The language target stays 3.11 in the
+# Black/Ruff/MyPy config below, so the source remains 3.11-compatible.
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+# ADR-002. The ML stack is a core dependency, not an extra: ADR-023 requires that a
+# developer without a GPU can run everything except a training step, and the CPU wheels
+# satisfy that. Making torch optional would instead make `training/` unimportable in CI,
+# which turns ADR-016's reachability rule into a test that cannot run.
+dependencies = [
+  "fastapi>=0.115,<0.116",
+  "uvicorn[standard]>=0.32,<0.33",
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.6,<3",
+  "sqlalchemy>=2.0,<2.1",
+  "alembic>=1.14,<2",
+  "psycopg[binary]>=3.2,<4",
+  "celery>=5.4,<6",
+  "redis>=5.2,<6",
+  "python-socketio>=5.11,<6",
+  "httpx>=0.27,<0.29",
+  "jsonschema>=4.23,<5",
+  "python-json-logger>=2.0,<4",
+  "torch>=2.4,<3",
+  "transformers>=4.46,<5",
+  "safetensors>=0.4,<1",
+  "peft>=0.13,<1",
+  "accelerate>=1.1,<2",
+  "huggingface_hub>=0.26,<1",
+  # Parquet, and it is NOT optional in practice. F2 imported it lazily and reported it as
+  # owed, refusing by name (`parquet_reader_unavailable`) rather than raising an ImportError
+  # nobody can act on - which was the right call for an agent that does not own this file.
+  # Declared here on 2026-10-14 because Parquet is **the format miDataworks' export service
+  # writes**, so without it the primary input path of miForge's main upstream cannot be read
+  # on a clean clone. That is foundation task 10.1's install, failing on the main path, not a
+  # graceful degradation of an edge case.
+  #
+  # The refusal is KEPT and is still tested: `test_signal_parts_reader.py` now blocks the
+  # import to force it, instead of skipping when pyarrow happens to be present. A conditional
+  # test of a refusal tests nothing on the machine where the dependency is installed.
+  "pyarrow>=17,<22",
+]
+
+[project.optional-dependencies]
+# bitsandbytes provides the 8-bit optimizer states (ADR-002). It is separated because it
+# has no pure-CPU wheel on every platform, and a developer without a card must still be
+# able to install the package and run the suite (ADR-023).
+#
+# ⚠ AN EXTRA SAYS WHO MAY SKIP IT, NOT THAT THE GPU IMAGE MAY. `backend/Dockerfile`
+# installs `.[bnb]`, and until 2026-10-16 it did not - so the deployed trainer could not
+# build its DEFAULT optimizer at all: `optimizer_state_precision` defaults to `8bit`, and
+# `training/optimizer.py` refuses `optimizer_precision_unavailable` rather than downgrading
+# silently, because the recorded identity would otherwise name a precision that was not
+# used. The Dockerfile had read the paragraph above as a reason to leave it out.
+#
+# **Do not promote it to `dependencies` to "fix" that** - that is the half of the defect
+# that breaks the cardless install this extra exists for.
+# `test_backend_image_can_train.py` pins both directions, and it reads the extra's NAME
+# from this table rather than spelling `bnb` a second time, so a rename here cannot
+# silently turn the Dockerfile's `.[bnb]` into a no-op (pip only WARNS on an unknown extra).
+bnb = ["bitsandbytes>=0.44,<1"]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-xdist>=3.6,<4",
+  "pytest-asyncio>=0.24,<1",
+  # PINNED EXACTLY since the lint gate landed (suite tracker 4.27, 2026-10-16): a gate whose
+  # linter floats turns red on a release that adds a rule, with no commit to blame. Bump on
+  # purpose, in a commit that also clears what the new version reports.
+  "black==26.3.1",
+  "ruff==0.17.1",
+  "mypy==1.20.2",
+  "types-jsonschema",
+]
+
+[tool.setuptools.packages.find]
+where = ["backend/src"]
+
+[tool.setuptools.package-dir]
+"" = "backend/src"
+
+# --------------------------------------------------------------------------------------
+# pytest - task 1.1
+# --------------------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend/src"]
+asyncio_mode = "auto"
+
+# TWO MARKERS, BOTH DESELECTED BY DEFAULT.
+#
+#   gpu      - needs a real CUDA device (ADR-023). A developer without a card, and CI,
+#              must be able to run everything else.
+#   upstream - needs a sibling application actually RUNNING, not merely configured
+#              (F11's three filings). CI has neither a card nor a serving process, so
+#              without this marker CI tries to run F11's live tests instead of skipping
+#              them cleanly.
+#
+# Registering both HERE rather than in a feature keeps one deselection convention. To
+# include them: `pytest -m gpu` / `pytest -m upstream` / `pytest -m "gpu or upstream"`.
+markers = [
+  "gpu: requires a CUDA device; deselected by default (ADR-023)",
+  "upstream: requires a sibling application running; deselected by default",
+]
+addopts = "-m 'not gpu and not upstream' --strict-markers --strict-config"
+
+# --------------------------------------------------------------------------------------
+# Black / Ruff / MyPy - ADR-018
+# --------------------------------------------------------------------------------------
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["backend/src", "backend/tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "C4", "SIM", "RUF"]
+# ADR-018 forbids a getattr default that always fires; B009/B010 (getattr with a constant)
+# is the lint that catches its cheapest form.
+#
+# SIM300 ("yoda condition") is DISABLED, and this is a correctness decision rather than a
+# style preference. `ruff check --fix` read a SQLAlchemy predicate `RUN_ID == run_id` as a
+# constant on the left and rewrote it to `run_id == RUN_ID` - which still *runs*, because
+# Python falls back to the column's reflected `__eq__`, so the suite stayed green and only
+# MyPy noticed (it typed the result as `bool`). The clauses it rewrote were the terminal-row
+# and GPU-lease guards: the ones whose whole purpose is to close a read-then-write race by
+# living inside the WHERE. **An autofix that rewrites a WHERE clause and leaves the tests
+# green is not something to defend with a hand-held naming convention.** Found by the agent
+# building task 6.0 when MyPy disagreed with a green suite.
+ignore = ["SIM108", "SIM300"]
+
+# N802/N801 OFF FOR TESTS ONLY (suite tracker 4.27, 2026-10-16). This project's test names
+# shout on purpose - `test_the_save_writes_TOKENIZER_FILES_AT_THE_ROOT` puts the assertion's
+# subject in capitals so it reads in a failure line - and 652 of 740 ruff errors were N802
+# objecting to that convention. The CONFIG disagreed with an intentional convention, so the
+# config changes; `backend/src` keeps both rules.
+[tool.ruff.lint.per-file-ignores]
+"backend/tests/**" = ["N802", "N801"]
+
+[tool.ruff.lint.isort]
+# external -> internal -> relative (ADR-001)
+known-first-party = ["api", "core", "db", "models", "schemas", "services", "clients", "providers", "training", "packs", "workers"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = "backend/src"
+packages = ["api", "core", "db", "models", "schemas", "services", "clients", "providers", "training", "packs", "workers"]
+warn_unreachable = true
+# NO INCREMENTAL CACHE, so a local run checks what CI checks. 2026-10-17: `main` went red on
+# `unused-ignore` in packs/references.py while every local run said "Success" - a stale
+# `.mypy_cache` was still answering for a module whose ignore had stopped being needed. CI
+# starts with no cache; a local run that keeps one is a different measurement. Costs a full
+# check each run, which is what the gate does anyway.
+incremental = false
+# A library without stubs must be declared, not silently Any-typed everywhere.
+[[tool.mypy.overrides]]
+module = ["transformers.*", "peft.*", "bitsandbytes.*", "accelerate.*", "celery.*", "socketio.*", "kombu.*"]
+ignore_missing_imports = true
+
+# `pyarrow` ships no stubs and no `py.typed`, so it must be DECLARED here rather than
+# silently Any-typed, by this section's own rule above. It is a real dependency (ADR: the
+# format miDataworks' export service writes) read by `training/signals/parts_reader.py`.
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+
+# ⚠ MYPY CANNOT RUN IN A 3.12 VENV, AND THAT IS AN ENVIRONMENT FACT, NOT A CODE ONE.
+# `numpy`'s shipped stubs use PEP 695 `type` statements — 3.12 syntax. Checked against the
+# floor above, mypy ABORTS while parsing them, before looking at one first-party file:
+#
+#   numpy/__init__.pyi:737: error: Type statement is only supported in Python 3.12 and greater
+#   Found 1 error in 1 file (errors prevented further checking)
+#
+# "errors prevented further checking" is the load-bearing half: mypy was not reporting this
+# project clean, it was reporting that it never looked — so a check ADR-018's standards list
+# requires had silently stopped happening. Found 2026-10-14 by an agent that RAN mypy instead
+# of reading that the standards require it.
+#
+# **`python_version` stays "3.11" and must not be raised to silence this.** 3.11 is real:
+# `backend-tests.yml` runs 3.11 on both jobs and `backend/Dockerfile` is `python:3.11-slim`.
+# Raising it would buy a green by no longer checking against the version miForge ships on.
+# Neither `follow_imports = "skip"` nor `ignore_errors` helps — a syntax error is raised while
+# PARSING, before per-module suppression applies — so there is no config that fixes it.
+#
+# The fix is to run mypy on 3.11 — and the reason that works is checkable rather than hoped
+# for: **the installed `numpy` 2.5.4 declares `Requires-Python: >=3.12`**, so pip on 3.11
+# cannot resolve it at all and installs an older numpy whose stubs carry no `type` statement.
+# Which means the local venv holds a numpy **this project's own floor cannot install** — the
+# venv is not a valid miForge environment, which is the same shape as the `torch` finding in
+# AGENT.md: a result that turns on which interpreter the venv happens to have is a statement
+# about the environment, not about the code, and the local run is not the authority.
+#
+# *Verified, not assumed — the first version of this comment asserted "3.11 resolves a numpy
+# whose stubs parse" without checking, and would have been wrong had numpy still supported
+# 3.11, since the same stub file would have shipped.*

@@ -1,0 +1,1631 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/hitsainet/miDataworks/main/docs/schemas/midataworks-dataset-version-v1.json",
+  "title": "miDataworks Dataset Version v1",
+  "description": "The handoff manifest miDataworks writes beside every published or exported version. GENERATED from backend/src/schemas/dataset_version.py by backend/scripts/write_dataset_version_schema.py; do not edit by hand. Consumers vendor this file byte-identical. Changes within v1 are additive only; a breaking change is v2 in a new file.",
+  "$defs": {
+    "Auroc": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "ci_low": {
+          "title": "Ci Low",
+          "type": "number"
+        },
+        "ci_high": {
+          "title": "Ci High",
+          "type": "number"
+        },
+        "n": {
+          "minimum": 0,
+          "title": "N",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "value",
+        "ci_low",
+        "ci_high",
+        "n"
+      ],
+      "title": "Auroc",
+      "type": "object"
+    },
+    "BundleArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "reward_function",
+            "rubric",
+            "config",
+            "readme"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "bytes": {
+          "minimum": 0,
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "role",
+        "bytes",
+        "sha256"
+      ],
+      "title": "BundleArtifact",
+      "type": "object"
+    },
+    "CalibrationRef": {
+      "additionalProperties": false,
+      "description": "One labeler's calibration (M-8), or ``none_recorded``.",
+      "properties": {
+        "labeler_fingerprint": {
+          "minLength": 1,
+          "title": "Labeler Fingerprint",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "recorded",
+            "none_recorded"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "record_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Record Id"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "enum": [
+                "passes",
+                "fails",
+                "invalid",
+                "insufficient"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Verdict"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "enum": [
+                "operator_target",
+                "held_out_rater",
+                "default_c3"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule"
+        },
+        "auroc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Auroc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "calibration_set": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CalibrationSetRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "labeler_fingerprint",
+        "status",
+        "record_id",
+        "verdict",
+        "rule",
+        "auroc",
+        "calibration_set"
+      ],
+      "title": "CalibrationRef",
+      "type": "object"
+    },
+    "CalibrationSetRef": {
+      "additionalProperties": false,
+      "description": "``rows_shipped`` is always false: a calibration set is cited, never shipped (P-14).",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "licence_class": {
+          "enum": [
+            "permits_redistribution",
+            "private_only",
+            "forbids_redistribution"
+          ],
+          "title": "Licence Class",
+          "type": "string"
+        },
+        "rows_shipped": {
+          "const": false,
+          "title": "Rows Shipped",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "licence_class",
+        "rows_shipped"
+      ],
+      "title": "CalibrationSetRef",
+      "type": "object"
+    },
+    "Caveat": {
+      "additionalProperties": false,
+      "description": "Something a reader must know (M-13). ``detail`` is open.",
+      "properties": {
+        "code": {
+          "enum": [
+            "shortcut_warning",
+            "amber_check",
+            "failing_verdict",
+            "unpinned_labeler",
+            "revision_not_reported",
+            "diversity_falling",
+            "length_mismatch",
+            "overrides_applied",
+            "evaluation_only",
+            "licence_changed_since_build"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "amber",
+            "note"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "detail": {
+          "additionalProperties": true,
+          "title": "Detail",
+          "type": "object"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "detail"
+      ],
+      "title": "Caveat",
+      "type": "object"
+    },
+    "Column": {
+      "additionalProperties": false,
+      "description": "A shipped column (M-9). A ``label`` column always lists its values.",
+      "if": {
+        "properties": {
+          "semantic": {
+            "const": "label"
+          }
+        },
+        "required": [
+          "semantic"
+        ]
+      },
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "arrow_type": {
+          "minLength": 1,
+          "title": "Arrow Type",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "content",
+            "metadata",
+            "system"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "semantic": {
+          "enum": [
+            "text",
+            "messages",
+            "prompt",
+            "completion",
+            "completions",
+            "chosen",
+            "rejected",
+            "label",
+            "labels",
+            "probability",
+            "reference",
+            "group",
+            "other"
+          ],
+          "title": "Semantic",
+          "type": "string"
+        },
+        "label_values": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label Values"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "arrow_type",
+        "role",
+        "semantic",
+        "label_values",
+        "extensions"
+      ],
+      "then": {
+        "properties": {
+          "label_values": {
+            "type": "array"
+          }
+        }
+      },
+      "title": "Column",
+      "type": "object"
+    },
+    "ConfigBody": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "selector",
+            "grader"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "plugin": {
+          "minLength": 1,
+          "title": "Plugin",
+          "type": "string"
+        },
+        "body_format": {
+          "minLength": 1,
+          "title": "Body Format",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "number",
+        "plugin",
+        "body_format",
+        "sha256",
+        "path"
+      ],
+      "title": "ConfigBody",
+      "type": "object"
+    },
+    "ConfigContent": {
+      "additionalProperties": false,
+      "description": "A selector or grader configuration (M-11); miForge copies ``sha256`` into its hash.",
+      "properties": {
+        "content_kind": {
+          "const": "config",
+          "title": "Content Kind",
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/$defs/ConfigBody"
+        }
+      },
+      "required": [
+        "content_kind",
+        "config"
+      ],
+      "title": "ConfigContent",
+      "type": "object"
+    },
+    "ContractReference": {
+      "additionalProperties": false,
+      "description": "miForge renders ``<type>/<name>@<version>`` (M-4). No pack in v1 (P-25).",
+      "properties": {
+        "type": {
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "name",
+        "version"
+      ],
+      "title": "ContractReference",
+      "type": "object"
+    },
+    "HubOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "hub",
+          "title": "Kind",
+          "type": "string"
+        },
+        "repo_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$",
+          "title": "Repo Id",
+          "type": "string"
+        },
+        "config": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Config"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Split"
+        },
+        "revision": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "repo_id",
+        "config",
+        "split",
+        "revision"
+      ],
+      "title": "HubOrigin",
+      "type": "object"
+    },
+    "InRepository": {
+      "additionalProperties": false,
+      "description": "The copy committed inside a repository: a file cannot carry its own commit.",
+      "properties": {
+        "state": {
+          "const": "in_repository",
+          "title": "State",
+          "type": "string"
+        },
+        "repo_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$",
+          "title": "Repo Id",
+          "type": "string"
+        },
+        "repo_type": {
+          "const": "dataset",
+          "title": "Repo Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "repo_id",
+        "repo_type"
+      ],
+      "title": "InRepository",
+      "type": "object"
+    },
+    "Labeler": {
+      "additionalProperties": false,
+      "description": "Who labelled the rows (M-7). ``probe`` is reserved for 009's M4 labeler.",
+      "properties": {
+        "fingerprint": {
+          "minLength": 1,
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "classifier",
+            "judge",
+            "human",
+            "probe"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Protocol"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Id"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Revision"
+        },
+        "revision_reported": {
+          "title": "Revision Reported",
+          "type": "boolean"
+        },
+        "pinned": {
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "question": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Question"
+        },
+        "label_set": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Label Set",
+          "type": "array"
+        },
+        "thresholds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Thresholds"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "excluded_share": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Excluded Share"
+        },
+        "run_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Run Ids",
+          "type": "array"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "fingerprint",
+        "role",
+        "protocol",
+        "model_id",
+        "model_revision",
+        "revision_reported",
+        "pinned",
+        "template",
+        "question",
+        "label_set",
+        "thresholds",
+        "excluded_share",
+        "run_ids",
+        "extensions"
+      ],
+      "title": "Labeler",
+      "type": "object"
+    },
+    "Licence": {
+      "additionalProperties": false,
+      "description": "As the Hub stated it, and how miDataworks classed it (M-5; FR-001.26, FR-008.58).",
+      "properties": {
+        "displayed": {
+          "minLength": 1,
+          "title": "Displayed",
+          "type": "string"
+        },
+        "raw": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Raw"
+        },
+        "origin": {
+          "enum": [
+            "card_data",
+            "tags",
+            "none",
+            "operator"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "licence_class": {
+          "enum": [
+            "permits_redistribution",
+            "private_only",
+            "forbids_redistribution"
+          ],
+          "title": "Licence Class",
+          "type": "string"
+        },
+        "table_version": {
+          "minimum": 1,
+          "title": "Table Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "displayed",
+        "raw",
+        "origin",
+        "licence_class",
+        "table_version"
+      ],
+      "title": "Licence",
+      "type": "object"
+    },
+    "Producer": {
+      "additionalProperties": false,
+      "description": "The application and build that wrote the manifest (M-2).",
+      "properties": {
+        "app": {
+          "const": "miDataworks",
+          "title": "App",
+          "type": "string"
+        },
+        "build": {
+          "minLength": 1,
+          "title": "Build",
+          "type": "string"
+        },
+        "generated_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "title": "Generated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "app",
+        "build",
+        "generated_at"
+      ],
+      "title": "Producer",
+      "type": "object"
+    },
+    "Projection": {
+      "additionalProperties": false,
+      "properties": {
+        "label_resolver": {
+          "const": "dw.effective-label/v1",
+          "title": "Label Resolver",
+          "type": "string"
+        },
+        "label_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Label Column"
+        },
+        "omitted_excluded": {
+          "minimum": 0,
+          "title": "Omitted Excluded",
+          "type": "integer"
+        },
+        "omitted_flagged_unresolved": {
+          "minimum": 0,
+          "title": "Omitted Flagged Unresolved",
+          "type": "integer"
+        },
+        "overrides_applied": {
+          "minimum": 0,
+          "title": "Overrides Applied",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "label_resolver",
+        "label_column",
+        "omitted_excluded",
+        "omitted_flagged_unresolved",
+        "overrides_applied"
+      ],
+      "title": "Projection",
+      "type": "object"
+    },
+    "Published": {
+      "additionalProperties": false,
+      "description": "Stored on the publish record and served by ``GET /versions/{id}/handoff-manifest``.",
+      "properties": {
+        "state": {
+          "const": "published",
+          "title": "State",
+          "type": "string"
+        },
+        "repo_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$",
+          "title": "Repo Id",
+          "type": "string"
+        },
+        "repo_type": {
+          "const": "dataset",
+          "title": "Repo Type",
+          "type": "string"
+        },
+        "visibility": {
+          "enum": [
+            "private",
+            "public"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        },
+        "commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Commit",
+          "type": "string"
+        },
+        "published_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "title": "Published At",
+          "type": "string"
+        },
+        "verification": {
+          "$ref": "#/$defs/Verification"
+        }
+      },
+      "required": [
+        "state",
+        "repo_id",
+        "repo_type",
+        "visibility",
+        "commit",
+        "published_at",
+        "verification"
+      ],
+      "title": "Published",
+      "type": "object"
+    },
+    "RecipeRef": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "dw.recipe/v1",
+          "title": "Format",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "format",
+        "sha256"
+      ],
+      "title": "RecipeRef",
+      "type": "object"
+    },
+    "RewardBundleContent": {
+      "additionalProperties": false,
+      "properties": {
+        "content_kind": {
+          "const": "reward_bundle",
+          "title": "Content Kind",
+          "type": "string"
+        },
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/BundleArtifact"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "rubric": {
+          "$ref": "#/$defs/RubricRef"
+        },
+        "judge_model_id": {
+          "minLength": 1,
+          "title": "Judge Model Id",
+          "type": "string"
+        },
+        "trl_version": {
+          "const": "1.14.1",
+          "title": "Trl Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_kind",
+        "artifacts",
+        "rubric",
+        "judge_model_id",
+        "trl_version"
+      ],
+      "title": "RewardBundleContent",
+      "type": "object"
+    },
+    "RowsContent": {
+      "additionalProperties": false,
+      "properties": {
+        "content_kind": {
+          "const": "rows",
+          "title": "Content Kind",
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/Column"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "splits": {
+          "items": {
+            "$ref": "#/$defs/Split"
+          },
+          "minItems": 1,
+          "title": "Splits",
+          "type": "array"
+        },
+        "projection": {
+          "$ref": "#/$defs/Projection"
+        },
+        "labelers": {
+          "items": {
+            "$ref": "#/$defs/Labeler"
+          },
+          "title": "Labelers",
+          "type": "array"
+        },
+        "calibration": {
+          "items": {
+            "$ref": "#/$defs/CalibrationRef"
+          },
+          "title": "Calibration",
+          "type": "array"
+        }
+      },
+      "required": [
+        "content_kind",
+        "columns",
+        "splits",
+        "projection",
+        "labelers",
+        "calibration"
+      ],
+      "title": "RowsContent",
+      "type": "object"
+    },
+    "RubricRef": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "style": {
+          "enum": [
+            "pointwise",
+            "binary"
+          ],
+          "title": "Style",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "content_sha256",
+        "style"
+      ],
+      "title": "RubricRef",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "origin": {
+          "discriminator": {
+            "mapping": {
+              "hub": "#/$defs/HubOrigin",
+              "upload": "#/$defs/UploadOrigin"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/HubOrigin"
+            },
+            {
+              "$ref": "#/$defs/UploadOrigin"
+            }
+          ],
+          "title": "Origin"
+        },
+        "licence": {
+          "$ref": "#/$defs/Licence"
+        },
+        "terms_status": {
+          "enum": [
+            "not_recorded",
+            "recorded"
+          ],
+          "title": "Terms Status",
+          "type": "string"
+        },
+        "gated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Gated"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "source_id",
+        "origin",
+        "licence",
+        "terms_status",
+        "gated",
+        "extensions"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "Split": {
+      "additionalProperties": false,
+      "description": "One split file (M-10). ``sha256`` is the file's bytes, equal to the Hub's LFS SHA-256.",
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "rows": {
+          "minimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "bytes": {
+          "minimum": 0,
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "logical_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Logical Digest",
+          "type": "string"
+        },
+        "label_counts": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Label Counts",
+          "type": "object"
+        },
+        "held_out": {
+          "title": "Held Out",
+          "type": "boolean"
+        },
+        "evaluation_only": {
+          "title": "Evaluation Only",
+          "type": "boolean"
+        },
+        "extensions": {
+          "additionalProperties": true,
+          "title": "Extensions",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "rows",
+        "bytes",
+        "sha256",
+        "logical_digest",
+        "label_counts",
+        "held_out",
+        "evaluation_only",
+        "extensions"
+      ],
+      "title": "Split",
+      "type": "object"
+    },
+    "Target": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "trl_export"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "trl_type": {
+                "type": "string"
+              },
+              "trl_version": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "detector_role"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "detector_role": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "miforge_set"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "miforge_set_kind": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "description": "What the files are for (M-3, M-4).",
+      "properties": {
+        "kind": {
+          "enum": [
+            "dataset",
+            "trl_export",
+            "detector_role",
+            "miforge_set",
+            "selector_config",
+            "grader_config",
+            "reward_bundle"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "dataset_target_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "sft",
+                "dpo",
+                "kto",
+                "grpo_prompt",
+                "prm",
+                "detector",
+                "untyped"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dataset Target Type"
+        },
+        "trl_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "sft",
+                "dpo",
+                "kto",
+                "grpo_prompt",
+                "prm"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trl Type"
+        },
+        "trl_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trl Version"
+        },
+        "detector_role": {
+          "anyOf": [
+            {
+              "enum": [
+                "train",
+                "id_test",
+                "ood_eval",
+                "calibration_negatives"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Detector Role"
+        },
+        "miforge_set_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "prompt_set",
+                "corpus",
+                "preference_pairs",
+                "test_set",
+                "retention_set"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Miforge Set Kind"
+        },
+        "contract_reference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContractReference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "dataset_target_type",
+        "trl_type",
+        "trl_version",
+        "detector_role",
+        "miforge_set_kind",
+        "contract_reference"
+      ],
+      "title": "Target",
+      "type": "object"
+    },
+    "TemplateRef": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "content_sha256"
+      ],
+      "title": "TemplateRef",
+      "type": "object"
+    },
+    "Thresholds": {
+      "additionalProperties": false,
+      "properties": {
+        "positive_at_or_above": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Positive At Or Above"
+        },
+        "negative_at_or_below": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Negative At Or Below"
+        }
+      },
+      "required": [
+        "positive_at_or_above",
+        "negative_at_or_below"
+      ],
+      "title": "Thresholds",
+      "type": "object"
+    },
+    "UploadOrigin": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "upload",
+          "title": "Kind",
+          "type": "string"
+        },
+        "filename": {
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "filename",
+        "content_sha256"
+      ],
+      "title": "UploadOrigin",
+      "type": "object"
+    },
+    "Verification": {
+      "additionalProperties": false,
+      "description": "A failed verification never produces a ``published`` manifest, so ``result`` is constant.",
+      "properties": {
+        "result": {
+          "const": "hashes_match",
+          "title": "Result",
+          "type": "string"
+        },
+        "files_checked": {
+          "minimum": 1,
+          "title": "Files Checked",
+          "type": "integer"
+        },
+        "checked_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "title": "Checked At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result",
+        "files_checked",
+        "checked_at"
+      ],
+      "title": "Verification",
+      "type": "object"
+    },
+    "VersionIdentity": {
+      "additionalProperties": false,
+      "description": "Which version this is and how it was made (M-2, M-6). Origin only; names stay inside.",
+      "properties": {
+        "dataset": {
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "title": "Dataset",
+          "type": "string"
+        },
+        "version_id": {
+          "minLength": 1,
+          "title": "Version Id",
+          "type": "string"
+        },
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "parent_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Version Id"
+        },
+        "created_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "created_by_origin": {
+          "enum": [
+            "operator",
+            "agent"
+          ],
+          "title": "Created By Origin",
+          "type": "string"
+        },
+        "recipe": {
+          "$ref": "#/$defs/RecipeRef"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "row_key_scheme": {
+          "minLength": 1,
+          "title": "Row Key Scheme",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset",
+        "version_id",
+        "number",
+        "parent_version_id",
+        "created_at",
+        "created_by_origin",
+        "recipe",
+        "seed",
+        "row_key_scheme"
+      ],
+      "title": "VersionIdentity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "content": {
+        "properties": {
+          "content_kind": {
+            "const": "rows"
+          }
+        },
+        "required": [
+          "content_kind"
+        ]
+      }
+    },
+    "required": [
+      "content"
+    ]
+  },
+  "properties": {
+    "kind": {
+      "const": "midataworks.dataset-version",
+      "title": "Kind",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "producer": {
+      "$ref": "#/$defs/Producer"
+    },
+    "version": {
+      "$ref": "#/$defs/VersionIdentity"
+    },
+    "target": {
+      "$ref": "#/$defs/Target"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "content": {
+      "discriminator": {
+        "mapping": {
+          "config": "#/$defs/ConfigContent",
+          "reward_bundle": "#/$defs/RewardBundleContent",
+          "rows": "#/$defs/RowsContent"
+        },
+        "propertyName": "content_kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RowsContent"
+        },
+        {
+          "$ref": "#/$defs/ConfigContent"
+        },
+        {
+          "$ref": "#/$defs/RewardBundleContent"
+        }
+      ],
+      "title": "Content"
+    },
+    "caveats": {
+      "items": {
+        "$ref": "#/$defs/Caveat"
+      },
+      "title": "Caveats",
+      "type": "array"
+    },
+    "publication": {
+      "anyOf": [
+        {
+          "discriminator": {
+            "mapping": {
+              "in_repository": "#/$defs/InRepository",
+              "published": "#/$defs/Published"
+            },
+            "propertyName": "state"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/InRepository"
+            },
+            {
+              "$ref": "#/$defs/Published"
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Publication"
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "title": "Extensions",
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "producer",
+    "version",
+    "target",
+    "sources",
+    "content",
+    "caveats",
+    "publication",
+    "extensions"
+  ],
+  "then": {
+    "properties": {
+      "sources": {
+        "minItems": 1
+      }
+    }
+  },
+  "type": "object"
+}

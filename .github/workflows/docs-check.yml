@@ -1,0 +1,68 @@
+name: docs-check
+
+on:
+  push:
+  pull_request:
+
+# Least privilege (CodeQL actions/missing-workflow-permissions, alert 1): this job only
+# checks out and reads files.
+permissions:
+  contents: read
+
+jobs:
+  check-refs:
+    # PRIMARY ONLY. The mirror sync strips 0xcc/, .claude/, AGENT.md and
+    # CLAUDE.md, so on hitsainet/miForge both this script and most of the files
+    # it checks are gone. Left ungated, the job would be red on every sync —
+    # the same failure miStudio's mirror had when the sync deleted a file its
+    # own tests required. Both casings, because a non-matching gate skips the
+    # job silently rather than erroring.
+    if: github.repository == 'Onegaishimas/miForge' || github.repository == 'Onegaishimas/miforge'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify framework doc references
+        run: bash 0xcc/scripts/check_refs.sh
+
+      # The review harness, wired in on 2026-10-14 now that a test workflow exists.
+      # AGENT.md had carried "wire it into CI when the test workflow lands" since the
+      # harness was written; `backend-tests.yml` and `frontend-tests.yml` landed, and a
+      # check that only ever runs when somebody remembers to run it is not a check.
+      #
+      # It belongs HERE rather than in backend-tests.yml for two reasons: it validates
+      # DOCUMENTS, not code, so a failure means a document drifted rather than a test
+      # broke; and it lives under `0xcc/`, which the mirror sync strips — so it can only
+      # run in a primary-only job, which this one already is.
+      #
+      # ⚠ THE SELFTEST RUNS FIRST, AND THAT ORDER IS THE POINT. The harness's first
+      # version was GREEN against a tree containing zero documents — the
+      # construction-green failure this project keeps finding. `--selftest` plants six
+      # known defects in a copy of the tree and requires each to be caught, so it is the
+      # positive check that the measurement can happen at all. Without it a broken
+      # detection string makes the real run pass for the wrong reason, which has already
+      # happened once: an edit demoting one check silently broke its match string and
+      # only the control noticed.
+      - name: Prove the review harness can fail (negative control)
+        run: python3 0xcc/scripts/review_chain.py --selftest
+
+      # `--final` makes an ABSENT chain a failure rather than PENDING. All eleven
+      # chains exist, so the strict form is the right one; without the flag a deleted
+      # document would downgrade to a pass.
+      - name: Review the document chain
+        run: python3 0xcc/scripts/review_chain.py --final
+
+      # Progress is a REPORT, not a gate — `--verify` resolves the file paths named by
+      # completed sub-tasks and flags any that do not exist. It exists because foundation
+      # task 1.7 was once marked `[x]` while the single file into which all eleven
+      # features route acceptance criterion 20 did not exist; a checkbox is prose, and
+      # prose is not checked. Every time a fresh checker here disagreed with careful
+      # work, the work was right — so this must never fail the build. `|| true` is
+      # deliberate, and the output is for a human to read in the log.
+      - name: Report task progress (never fails the build)
+        run: python3 0xcc/scripts/task_progress.py --verify || true

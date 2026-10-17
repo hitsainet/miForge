@@ -1,0 +1,56 @@
+# Redis 7 — Celery broker and the Socket.IO progress channel. **NEVER a store of
+# record** (ADR-003).
+#
+# That is why there is no volume here and no claim in `storage.yaml` for it: nothing
+# in Redis may be the only copy of anything. If losing this pod costs more than
+# in-flight progress and a queued task, something has been written to the wrong place.
+#
+# A run's durable state is the `mf_runs` row and the on-disk manifest. Specifically, the
+# HEARTBEAT IS A DATABASE WRITE, not a Redis key (ADR-007) — progress reported only over
+# the socket is invisible to the janitor, which is how miStudio reaped a live 5.8-hour
+# job as "worker lost".
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miforge-redis
+  namespace: miforge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: miforge-redis
+  template:
+    metadata:
+      labels:
+        app: miforge-redis
+    spec:
+      # Pinned with everything else. Not for data — there is none — but so a pod
+      # restart does not move the broker off the node its only clients run on.
+      nodeSelector:
+        kubernetes.io/hostname: mcs-lnxhost02
+      containers:
+        - name: redis
+          image: redis:7
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: miforge
+spec:
+  selector:
+    app: miforge-redis
+  ports:
+    - port: 6379
+      targetPort: 6379

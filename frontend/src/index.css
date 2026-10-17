@@ -1,0 +1,147 @@
+/* The miForge stylesheet: tokens as CSS variables, and the focus ring.
+ *
+ * Foundation tasks 7.2, 7.3 and 7.5. ADR-011, ADR-012.
+ *
+ * The variable values here are checked against `src/config/tokens.ts` by
+ * `src/config/tokens.test.ts`, which fails on any disagreement. They are written twice
+ * because a stylesheet cannot import a TypeScript module, and the test is what makes the
+ * duplication safe - the same arrangement, and the same reasoning, as the vendored
+ * schemas in `docs/schemas/` whose byte-identity is a test rather than a note.
+ */
+
+/* Inter and JetBrains Mono (ADR-012), fetched the way miLLM's admin-ui fetches them.
+ * Must be first: a CSS @import after a rule is ignored. If the node is offline the
+ * stacks in `config/tokens.ts` carry it. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Light is `:root`; dark is `.dark`, per ADR-011's `darkMode: 'class'`.
+ * `index.html` ships with `class="dark"` on <html>, because the mockup - and therefore
+ * every screen in the documents - is dark. Light is the alternative, not the default. */
+:root {
+  --mf-bg: #f6f8fb;
+  --mf-panel: #ffffff;
+  --mf-card: #ffffff;
+  --mf-line: #d8dfe9;
+  --mf-text: #121923;
+  --mf-dim: #5b6675;
+  --mf-accent: #f97316;
+  --mf-accent-hover: #ea6b06;
+  --mf-accent-tint: rgba(249, 115, 22, 0.12);
+  --mf-green: #16a34a;
+  --mf-cyan: #0891b2;
+  --mf-red: #dc2626;
+  --mf-amber: #b45309;
+
+  color-scheme: light;
+}
+
+.dark {
+  --mf-bg: #0d1420;
+  --mf-panel: #131b28;
+  --mf-card: #18212f;
+  --mf-line: #243044;
+  --mf-text: #e6ebf2;
+  --mf-dim: #8b97a8;
+  --mf-accent: #f97316;
+  --mf-accent-hover: #fb923c;
+  --mf-accent-tint: rgba(249, 115, 22, 0.12);
+  --mf-green: #22c55e;
+  --mf-cyan: #22d3ee;
+  --mf-red: #ef4444;
+  --mf-amber: #f59e0b;
+
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    font-family:
+      'Inter',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif;
+  }
+
+  body {
+    margin: 0;
+    background: var(--mf-bg);
+    color: var(--mf-text);
+    font-size: 14px; /* handoff 2: body 14px */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ---- The focus ring (foundation 7.5) --------------------------------------------
+   *
+   * The mockup has no focus styles at all; its own handoff 6 lists that as a known
+   * gap and says to "add the sibling apps' focus ring". Both siblings draw it in their
+   * own accent, so miForge's is orange - recorded as a deliberate extension of
+   * ADR-012's seven permitted surfaces in `config/tokens.ts` (ADDED_ACCENT_SURFACES).
+   *
+   * Three choices here are the whole point of writing it globally rather than per
+   * component:
+   *
+   * 1. **`:focus-visible`, never `:focus`.** A ring on `:focus` fires on a mouse click
+   *    too, which is why so many codebases then add `focus:outline-none` and end up
+   *    with no keyboard affordance at all. miStudio has `focus:outline-none` at 210
+   *    call sites; miLLM applies `outline-none` to every `input`, `select` and
+   *    `button` in its base layer and replaces it only on inputs - so its **buttons
+   *    have no focus indicator**. Copying the colour from the siblings is right;
+   *    copying that is not.
+   * 2. **A ring plus an offset, not an outline colour change.** The offset is drawn in
+   *    `--mf-bg`, so the ring reads against a `panel` sidebar and a `card` row alike
+   *    without a per-surface variant.
+   * 3. **Declared once, for everything focusable.** A ring applied component by
+   *    component is a ring that is missing from whatever component is written next -
+   *    and FR-009.7 is "every screen, every node of the tree and every action".
+   *
+   * `.mf-focus-ring` exists for the case a component must put the ring on a wrapper
+   * rather than on the focused element itself. */
+  :where(
+    a,
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [tabindex]:not([tabindex='-1'])
+  ):focus-visible,
+  .mf-focus-ring:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--mf-bg),
+      0 0 0 4px var(--mf-accent);
+    border-radius: inherit;
+  }
+
+  /* An input additionally takes the accent on its own border while focused, which is
+   * the miLLM pattern (`focus:border-primary-400/50`) and is what makes a focused field
+   * legible in a dense form. Still `:focus-visible`-gated so a click does not light up
+   * a border the user is already looking at. */
+  :where(input, select, textarea):focus-visible {
+    border-color: var(--mf-accent);
+  }
+
+  /* A disabled control is not focusable and must not look actionable. */
+  :where(button, input, select, textarea):disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--mf-panel);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--mf-line);
+    border-radius: 4px;
+  }
+}

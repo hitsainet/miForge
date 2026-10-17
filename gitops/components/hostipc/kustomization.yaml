@@ -1,0 +1,53 @@
+# hostIPC for F11 hot-update — an OPT-IN kustomize Component (suite decision D1, 2026-10-16).
+#
+# Operator decision D1: "F11 topology: `hostIPC: true` on both pods, shipped as an opt-in
+# overlay applied only when hot-update is used. Sidecar stays closed (BRD-02)." This is
+# miForge's half; miLLM builds the other half in its own repository. CUDA IPC between the
+# trainer (this pod) and the serving process (miLLM's pod) needs a shared IPC namespace,
+# and two pods share one only through the host's (F11 task 2.3 / 14.2).
+#
+# ⚠ NOT DEPLOYED BY DEFAULT. `gitops/pilot/kustomization.yaml` — the path the `miforge`
+# ArgoCD Application reads (`gitops/pilot/argocd/miforge-app.yaml`) — does NOT list this
+# component, and `backend/tests/unit/test_gitops_hostipc_overlay.py` goes red if it ever
+# does without that test being changed in the same commit. hostIPC lets every process in
+# the pod see the node's System V IPC objects and POSIX shared memory; it is a privilege
+# granted for one mode, not a default.
+#
+# ── HOW TO ENABLE (only for a hot-update session) ─────────────────────────────────────
+# Add the component to the deployed kustomization — ONE line, in a commit, pushed with the
+# operator's go (D16), and reverted by the same route when the session ends:
+#
+#     # gitops/pilot/kustomization.yaml
+#     components:
+#       - ../components/hostipc
+#
+# and update `test_gitops_hostipc_overlay.py::test_the_deployed_path_does_not_include_it`
+# in the same commit (it exists to make enabling a deliberate act, not an accident).
+#
+# ⚠ DO NOT ENABLE IT BY REPOINTING THE ArgoCD APPLICATION's `path` at
+# `gitops/overlays/hotupdate`. Image Updater writes its digest pin to
+# `<spec.source.path>/.argocd-source-miforge.yaml`, and `sync-main-to-gitops-pilot.yml`
+# protects only `gitops/pilot/.argocd-source-miforge.yaml` from its converge step — so a
+# repointed Application writes its pin somewhere the next push to main deletes, and the
+# cluster silently un-pins. `gitops/overlays/hotupdate/` exists to PREVIEW the rendered
+# result (`kubectl kustomize gitops/overlays/hotupdate`) and for the test, not to deploy.
+#
+# Preconditions (F11 GPU block): miLLM's own hostIPC half applied; no run in progress
+# (a rollout kills the train worker — AGENT.md, Recreate strategy); the trainer token in
+# `miforge-secrets` and MILLM_BASE_URL set (F11 §16.1). See F11 FTASKS 14.3.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: miforge-backend
+    # Pod-level: every container in the pod (API, train worker, the rest) shares the host
+    # IPC namespace. Only the `train` worker needs it, but Kubernetes has no per-container
+    # IPC namespace, which is why D1 frames this as a mode rather than a setting.
+    patch: |-
+      - op: add
+        path: /spec/template/spec/hostIPC
+        value: true
