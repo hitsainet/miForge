@@ -1,0 +1,2194 @@
+{
+  "$defs": {
+    "AdapterBase": {
+      "description": "The base the adapter's manifest names.",
+      "properties": {
+        "manifest_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Manifest Sha256"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "AdapterBase",
+      "type": "object"
+    },
+    "AdapterInfo": {
+      "description": "What was applied.",
+      "properties": {
+        "alpha": {
+          "title": "Alpha",
+          "type": "number"
+        },
+        "base": {
+          "$ref": "#/$defs/AdapterBase"
+        },
+        "manifest_sha256": {
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "scaling": {
+          "title": "Scaling",
+          "type": "number"
+        },
+        "target_count": {
+          "title": "Target Count",
+          "type": "integer"
+        },
+        "weights_sha256": {
+          "title": "Weights Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "manifest_sha256",
+        "weights_sha256",
+        "base",
+        "rank",
+        "alpha",
+        "scaling",
+        "target_count"
+      ],
+      "title": "AdapterInfo",
+      "type": "object"
+    },
+    "AdapterLoadResponse": {
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/AdapterInfo"
+        },
+        "held_ms": {
+          "description": "How long serving was paused",
+          "title": "Held Ms",
+          "type": "number"
+        },
+        "resolved_model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What /v1 now reports: the adapter's own name",
+          "title": "Resolved Model Name"
+        }
+      },
+      "required": [
+        "adapter",
+        "held_ms"
+      ],
+      "title": "AdapterLoadResponse",
+      "type": "object"
+    },
+    "AdapterStatus": {
+      "additionalProperties": false,
+      "description": "The adapter block (D-28, FR-33.4.5). Every field but `applied` is null when nothing is\napplied. Forbids extra fields, so a status dict that grew a key fails validation instead of\nreaching the unauthenticated status routes.",
+      "properties": {
+        "applied": {
+          "title": "Applied",
+          "type": "boolean"
+        },
+        "base_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The RESIDENT base's served name (what /v1 reports once the adapter is unloaded) — not the base the manifest names; that is manifest_base_name",
+          "title": "Base Name"
+        },
+        "base_steps_since_load": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Commits to the base since the adapter was applied; null = not recorded",
+          "title": "Base Steps Since Load"
+        },
+        "loaded_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Loaded At"
+        },
+        "manifest_base_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The base the adapter's manifest names (base.name)",
+          "title": "Manifest Base Name"
+        },
+        "manifest_base_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The manifest's base.manifest_sha256; null when the manifest names the base by name only",
+          "title": "Manifest Base Sha256"
+        },
+        "manifest_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "SHA-256 of the applied adapter's adapter_manifest.json",
+          "title": "Manifest Sha256"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "rank": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rank"
+        },
+        "target_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Count"
+        },
+        "weights_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Weights Sha256"
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "title": "AdapterStatus",
+      "type": "object"
+    },
+    "AdapterUnloadResponse": {
+      "properties": {
+        "held_ms": {
+          "title": "Held Ms",
+          "type": "number"
+        },
+        "resolved_model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What /v1 now reports: the bare base's name",
+          "title": "Resolved Model Name"
+        },
+        "unloaded": {
+          "$ref": "#/$defs/AdapterUnloaded"
+        }
+      },
+      "required": [
+        "unloaded",
+        "held_ms"
+      ],
+      "title": "AdapterUnloadResponse",
+      "type": "object"
+    },
+    "AdapterUnloaded": {
+      "properties": {
+        "manifest_sha256": {
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "manifest_sha256"
+      ],
+      "title": "AdapterUnloaded",
+      "type": "object"
+    },
+    "ApiResponse_AdapterLoadResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterLoadResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[AdapterLoadResponse]",
+      "type": "object"
+    },
+    "ApiResponse_AdapterStatus_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[AdapterStatus]",
+      "type": "object"
+    },
+    "ApiResponse_AdapterUnloadResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterUnloadResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[AdapterUnloadResponse]",
+      "type": "object"
+    },
+    "ApiResponse_ClearStaleResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClearStaleResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[ClearStaleResponse]",
+      "type": "object"
+    },
+    "ApiResponse_CommitBeginResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommitBeginResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[CommitBeginResponse]",
+      "type": "object"
+    },
+    "ApiResponse_CommitEndResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommitEndResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[CommitEndResponse]",
+      "type": "object"
+    },
+    "ApiResponse_HeartbeatResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeartbeatResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[HeartbeatResponse]",
+      "type": "object"
+    },
+    "ApiResponse_LineageResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LineageResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[LineageResponse]",
+      "type": "object"
+    },
+    "ApiResponse_LoadResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LoadResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[LoadResponse]",
+      "type": "object"
+    },
+    "ApiResponse_QuiesceResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QuiesceResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[QuiesceResponse]",
+      "type": "object"
+    },
+    "ApiResponse_ResumeResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResumeResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[ResumeResponse]",
+      "type": "object"
+    },
+    "ApiResponse_SaveResponse_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SaveResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[SaveResponse]",
+      "type": "object"
+    },
+    "ApiResponse_WeightsStatus_": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WeightsStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[WeightsStatus]",
+      "type": "object"
+    },
+    "AttachedModel": {
+      "additionalProperties": false,
+      "properties": {
+        "manifest_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The loaded checkpoint's manifest hash; null when not loaded from one.",
+          "title": "Manifest Hash"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "integer"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        }
+      },
+      "required": [
+        "model_id",
+        "name"
+      ],
+      "title": "AttachedModel",
+      "type": "object"
+    },
+    "ClearStaleResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "barrier": {
+          "enum": [
+            "serving",
+            "quiesced"
+          ],
+          "title": "Barrier",
+          "type": "string"
+        },
+        "cleared": {
+          "$ref": "#/$defs/ClearedAttachment"
+        },
+        "weights_state": {
+          "enum": [
+            "clean",
+            "writing",
+            "torn"
+          ],
+          "title": "Weights State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cleared",
+        "weights_state",
+        "barrier"
+      ],
+      "title": "ClearStaleResponse",
+      "type": "object"
+    },
+    "ClearedAttachment": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "stale_since": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stale Since"
+        }
+      },
+      "required": [
+        "role",
+        "label",
+        "stale_since"
+      ],
+      "title": "ClearedAttachment",
+      "type": "object"
+    },
+    "CommitBeginResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "began_at": {
+          "title": "Began At",
+          "type": "string"
+        },
+        "watchdog_ms": {
+          "title": "Watchdog Ms",
+          "type": "integer"
+        },
+        "weights_state": {
+          "enum": [
+            "clean",
+            "writing",
+            "torn"
+          ],
+          "title": "Weights State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "weights_state",
+        "began_at",
+        "watchdog_ms"
+      ],
+      "title": "CommitBeginResponse",
+      "type": "object"
+    },
+    "CommitEndResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "commit_ms": {
+          "title": "Commit Ms",
+          "type": "number"
+        },
+        "overran": {
+          "title": "Overran",
+          "type": "boolean"
+        },
+        "steps_since_load": {
+          "title": "Steps Since Load",
+          "type": "integer"
+        },
+        "weights_state": {
+          "enum": [
+            "clean",
+            "writing",
+            "torn"
+          ],
+          "title": "Weights State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "weights_state",
+        "steps_since_load",
+        "commit_ms",
+        "overran"
+      ],
+      "title": "CommitEndResponse",
+      "type": "object"
+    },
+    "CommitStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "began_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Began At"
+        },
+        "open_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Open Ms"
+        },
+        "overran": {
+          "title": "Overran",
+          "type": "boolean"
+        },
+        "watchdog_ms": {
+          "title": "Watchdog Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "began_at",
+        "open_ms",
+        "watchdog_ms",
+        "overran"
+      ],
+      "title": "CommitStatus",
+      "type": "object"
+    },
+    "CudaMemory": {
+      "additionalProperties": false,
+      "description": "One card, as this process's CUDA caching allocator reports it.",
+      "properties": {
+        "allocated_mb": {
+          "title": "Allocated Mb",
+          "type": "integer"
+        },
+        "device_index": {
+          "title": "Device Index",
+          "type": "integer"
+        },
+        "reserved_mb": {
+          "title": "Reserved Mb",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "device_index",
+        "allocated_mb",
+        "reserved_mb"
+      ],
+      "title": "CudaMemory",
+      "type": "object"
+    },
+    "ErrorDetails": {
+      "description": "Error details for failed API responses.",
+      "properties": {
+        "code": {
+          "description": "Machine-readable error code",
+          "title": "Code",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "description": "Additional error context",
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "description": "Human-readable error message",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ErrorDetails",
+      "type": "object"
+    },
+    "HeartbeatResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment_state": {
+          "const": "active",
+          "title": "Attachment State",
+          "type": "string"
+        },
+        "interval_hint_s": {
+          "description": "The suggested heartbeat interval (WEIGHTS_HEARTBEAT_INTERVAL_HINT_S).",
+          "title": "Interval Hint S",
+          "type": "number"
+        },
+        "timeout_s": {
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "weights_state": {
+          "enum": [
+            "clean",
+            "writing",
+            "torn"
+          ],
+          "title": "Weights State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attachment_state",
+        "timeout_s",
+        "interval_hint_s",
+        "weights_state"
+      ],
+      "title": "HeartbeatResponse",
+      "type": "object"
+    },
+    "HeartbeatTerms": {
+      "additionalProperties": false,
+      "properties": {
+        "interval_hint_s": {
+          "title": "Interval Hint S",
+          "type": "number"
+        },
+        "timeout_s": {
+          "title": "Timeout S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "timeout_s",
+        "interval_hint_s"
+      ],
+      "title": "HeartbeatTerms",
+      "type": "object"
+    },
+    "LastOverrun": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "title": "At",
+          "type": "string"
+        },
+        "commit_ms": {
+          "title": "Commit Ms",
+          "type": "number"
+        }
+      },
+      "required": [
+        "at",
+        "commit_ms"
+      ],
+      "title": "LastOverrun",
+      "type": "object"
+    },
+    "LastSave": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "title": "At",
+          "type": "string"
+        },
+        "checkpoint_sha256": {
+          "title": "Checkpoint Sha256",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_sha256",
+        "at",
+        "path"
+      ],
+      "title": "LastSave",
+      "type": "object"
+    },
+    "LineageBreak": {
+      "properties": {
+        "at": {
+          "title": "At",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "manifest_missing",
+            "manifest_invalid",
+            "name_mismatch",
+            "cycle",
+            "depth_limit",
+            "ambiguous"
+          ],
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "reason"
+      ],
+      "title": "LineageBreak",
+      "type": "object"
+    },
+    "LineageLink": {
+      "properties": {
+        "manifest_sha256": {
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "merged_adapter": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Merged Adapter"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent"
+        },
+        "path": {
+          "description": "The step directory, relative to its checkpoint root",
+          "title": "Path",
+          "type": "string"
+        },
+        "root": {
+          "description": "The checkpoint root the link was found under",
+          "title": "Root",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "step": {
+          "title": "Step",
+          "type": "integer"
+        },
+        "weights_sha256": {
+          "title": "Weights Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "run_id",
+        "step",
+        "path",
+        "root",
+        "manifest_sha256",
+        "weights_sha256",
+        "parent",
+        "merged_adapter"
+      ],
+      "title": "LineageLink",
+      "type": "object"
+    },
+    "LineageResident": {
+      "properties": {
+        "commits_since_identity": {
+          "title": "Commits Since Identity",
+          "type": "integer"
+        },
+        "manifest_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Manifest Sha256"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "model",
+            "checkpoint",
+            "instantiated"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "origin",
+        "manifest_sha256",
+        "commits_since_identity"
+      ],
+      "title": "LineageResident",
+      "type": "object"
+    },
+    "LineageResponse": {
+      "description": "`GET /api/weights/lineage` (FTDD §5.4). Read from manifests; weights are never hashed.",
+      "properties": {
+        "base_model": {
+          "title": "Base Model",
+          "type": "string"
+        },
+        "break": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LineageBreak"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "chain": {
+          "items": {
+            "$ref": "#/$defs/LineageLink"
+          },
+          "title": "Chain",
+          "type": "array"
+        },
+        "complete": {
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "resident": {
+          "$ref": "#/$defs/LineageResident"
+        },
+        "weights_verified": {
+          "const": false,
+          "default": false,
+          "title": "Weights Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "resident",
+        "base_model",
+        "chain",
+        "complete"
+      ],
+      "title": "LineageResponse",
+      "type": "object"
+    },
+    "LoadResponse": {
+      "description": "`200` body (FPRD FR-32.5.13). Hashes are null for a `model_id` row reload.",
+      "properties": {
+        "manifest_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Manifest Sha256"
+        },
+        "mode": {
+          "enum": [
+            "in_place",
+            "full_reload"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "steps_since_load": {
+          "title": "Steps Since Load",
+          "type": "integer"
+        },
+        "verify_ms": {
+          "title": "Verify Ms",
+          "type": "number"
+        },
+        "weights_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Weights Sha256"
+        },
+        "weights_state": {
+          "title": "Weights State",
+          "type": "string"
+        },
+        "write_ms": {
+          "title": "Write Ms",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "mode",
+        "weights_sha256",
+        "manifest_sha256",
+        "verify_ms",
+        "write_ms",
+        "weights_state",
+        "steps_since_load"
+      ],
+      "title": "LoadResponse",
+      "type": "object"
+    },
+    "ParameterHandle": {
+      "additionalProperties": true,
+      "description": "One parameter: its module path and where it lives in a storage (FR-31.1.1).",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "storage": {
+          "title": "Storage",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "storage"
+      ],
+      "title": "ParameterHandle",
+      "type": "object"
+    },
+    "ProducerVersions": {
+      "additionalProperties": false,
+      "properties": {
+        "cuda": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cuda"
+        },
+        "driver": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Driver"
+        },
+        "torch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Torch"
+        }
+      },
+      "title": "ProducerVersions",
+      "type": "object"
+    },
+    "QuiesceResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "held_batch_chunks": {
+          "title": "Held Batch Chunks",
+          "type": "integer"
+        },
+        "held_requests": {
+          "title": "Held Requests",
+          "type": "integer"
+        },
+        "hold_deadline": {
+          "title": "Hold Deadline",
+          "type": "string"
+        },
+        "quiesced_at": {
+          "title": "Quiesced At",
+          "type": "string"
+        },
+        "weights_state": {
+          "enum": [
+            "clean",
+            "writing",
+            "torn"
+          ],
+          "title": "Weights State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "held_requests",
+        "held_batch_chunks",
+        "weights_state",
+        "quiesced_at",
+        "hold_deadline"
+      ],
+      "title": "QuiesceResponse",
+      "type": "object"
+    },
+    "ReleaseTerms": {
+      "additionalProperties": false,
+      "description": "The release contract (addendum D-47): what an attachment pins until it is released.",
+      "properties": {
+        "contract": {
+          "description": "What the consumer must do to release them.",
+          "title": "Contract",
+          "type": "string"
+        },
+        "pinned_bytes": {
+          "description": "Bytes of GPU memory the exported storages hold; they stay reserved until every handle is rebuilt once and released, or miLLM restarts.",
+          "title": "Pinned Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pinned_bytes",
+        "contract"
+      ],
+      "title": "ReleaseTerms",
+      "type": "object"
+    },
+    "ResidentModelStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "manifest_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Manifest Hash"
+        },
+        "model_id": {
+          "title": "Model Id",
+          "type": "integer"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        }
+      },
+      "required": [
+        "model_id",
+        "name",
+        "manifest_hash"
+      ],
+      "title": "ResidentModelStatus",
+      "type": "object"
+    },
+    "ResumeResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "barrier": {
+          "enum": [
+            "serving",
+            "quiesced"
+          ],
+          "title": "Barrier",
+          "type": "string"
+        },
+        "weights_state": {
+          "enum": [
+            "clean",
+            "writing",
+            "torn"
+          ],
+          "title": "Weights State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "barrier",
+        "weights_state"
+      ],
+      "title": "ResumeResponse",
+      "type": "object"
+    },
+    "SaveResponse": {
+      "description": "`201` body (FPRD FR-32.1.10).",
+      "properties": {
+        "bytes": {
+          "description": "Total bytes written into the step directory",
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "identity_set": {
+          "description": "False when a load replaced the resident weights while this checkpoint was being written: the checkpoint is published, but the resident model is not renamed to it.",
+          "title": "Identity Set",
+          "type": "boolean"
+        },
+        "latest": {
+          "description": "What `latest` now points at",
+          "title": "Latest",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parent_check": {
+          "enum": [
+            "match",
+            "mismatch"
+          ],
+          "title": "Parent Check",
+          "type": "string"
+        },
+        "path": {
+          "description": "The step directory, relative to the checkpoint root",
+          "title": "Path",
+          "type": "string"
+        },
+        "snapshot_ms": {
+          "description": "How long serving was paused",
+          "title": "Snapshot Ms",
+          "type": "number"
+        },
+        "weights_sha256": {
+          "title": "Weights Sha256",
+          "type": "string"
+        },
+        "write_ms": {
+          "description": "Write, fsync, hash and publish, outside the pause",
+          "title": "Write Ms",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "weights_sha256",
+        "manifest_sha256",
+        "bytes",
+        "snapshot_ms",
+        "write_ms",
+        "parent_check",
+        "latest",
+        "identity_set"
+      ],
+      "title": "SaveResponse",
+      "type": "object"
+    },
+    "StorageHandle": {
+      "additionalProperties": true,
+      "description": "One CUDA storage, with the fields PyTorch's reducer emits (FR-31.1.3).",
+      "properties": {
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "index"
+      ],
+      "title": "StorageHandle",
+      "type": "object"
+    },
+    "WeightsStatus": {
+      "additionalProperties": false,
+      "description": "`GET /api/weights/status` (FR-31.16.1). No attachment ID, no token (FR-31.16.2).",
+      "properties": {
+        "adapter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The adapter block, the same model GET /api/weights/adapter returns (addendum D-28); null when it could not be read — the status never fails over it."
+        },
+        "attached": {
+          "title": "Attached",
+          "type": "boolean"
+        },
+        "attachment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/millm__api__schemas__weights__AttachmentStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "barrier": {
+          "enum": [
+            "serving",
+            "quiesced"
+          ],
+          "title": "Barrier",
+          "type": "string"
+        },
+        "commit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommitStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "commit_overran": {
+          "title": "Commit Overran",
+          "type": "boolean"
+        },
+        "cuda_memory": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CudaMemory"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Allocated and reserved MiB per card in this process (addendum D-47). With nothing resident, allocated memory well above zero was never released by a consumer (handles never rebuilt, or a trainer that died or exited holding them); only a restart returns it. Null when CUDA is not available.",
+          "title": "Cuda Memory"
+        },
+        "exports_since_start": {
+          "default": 0,
+          "description": "Handle exports (attaches) this process has made since it started.",
+          "title": "Exports Since Start",
+          "type": "integer"
+        },
+        "held_requests": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Interactive requests waiting while quiesced; null while serving.",
+          "title": "Held Requests"
+        },
+        "last_hold_timeout_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Hold Timeout At"
+        },
+        "last_overrun": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LastOverrun"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_save": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LastSave"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pause_unavailable": {
+          "anyOf": [
+            {
+              "enum": [
+                "cbm",
+                "concurrency"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why the barrier cannot pause serving right now — continuous batching is enabled (`cbm`) or the request queue has more than one slot (`concurrency`) — so quiesce, a weights load and an adapter change would be refused with BARRIER_UNAVAILABLE; null when a pause is possible.",
+          "title": "Pause Unavailable"
+        },
+        "quiesced_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Quiesced At"
+        },
+        "resident_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResidentModelStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "steps_since_load": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Completed commits since the parameter set became resident; null when nothing is resident (not recorded), never 0 for that case.",
+          "title": "Steps Since Load"
+        },
+        "weights_state": {
+          "enum": [
+            "clean",
+            "writing",
+            "torn"
+          ],
+          "title": "Weights State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attached",
+        "attachment",
+        "barrier",
+        "quiesced_at",
+        "weights_state",
+        "resident_model",
+        "last_save",
+        "commit",
+        "commit_overran",
+        "last_hold_timeout_at",
+        "last_overrun"
+      ],
+      "title": "WeightsStatus",
+      "type": "object"
+    },
+    "millm__api__schemas__common__ApiResponse_AttachResponse___2": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/millm__api__schemas__weights__AttachResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[AttachResponse]",
+      "type": "object"
+    },
+    "millm__api__schemas__common__ApiResponse_DetachResponse___2": {
+      "examples": [
+        {
+          "data": {},
+          "success": true
+        }
+      ],
+      "properties": {
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/millm__api__schemas__weights__DetachResponse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Response data (on success)"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error details (on failure)"
+        },
+        "success": {
+          "description": "Whether the request succeeded",
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ApiResponse[DetachResponse]",
+      "type": "object"
+    },
+    "millm__api__schemas__weights__AttachResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment_id": {
+          "description": "Returned exactly once; send it as X-miLLM-Attachment on holder calls.",
+          "title": "Attachment Id",
+          "type": "string"
+        },
+        "config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The served model's architecture config exactly as loaded (its own JSON form, every attribute stated), so a trainer rebuilds the graph around the handles from the config this process instantiated. Null when the model has no Hugging Face config. Additive (suite decision D39, 2026-10-17).",
+          "title": "Config"
+        },
+        "heartbeat": {
+          "$ref": "#/$defs/HeartbeatTerms"
+        },
+        "model": {
+          "$ref": "#/$defs/AttachedModel"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/ParameterHandle"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "producer": {
+          "$ref": "#/$defs/ProducerVersions"
+        },
+        "release": {
+          "$ref": "#/$defs/ReleaseTerms"
+        },
+        "steps_since_load": {
+          "title": "Steps Since Load",
+          "type": "integer"
+        },
+        "storages": {
+          "items": {
+            "$ref": "#/$defs/StorageHandle"
+          },
+          "title": "Storages",
+          "type": "array"
+        },
+        "weights_state": {
+          "enum": [
+            "clean",
+            "writing",
+            "torn"
+          ],
+          "title": "Weights State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attachment_id",
+        "model",
+        "weights_state",
+        "steps_since_load",
+        "heartbeat",
+        "producer",
+        "storages",
+        "parameters",
+        "release"
+      ],
+      "title": "AttachResponse",
+      "type": "object"
+    },
+    "millm__api__schemas__weights__AttachmentStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "attached_at": {
+          "title": "Attached At",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "last_heartbeat_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Heartbeat At"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "stale_since": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stale Since"
+        },
+        "state": {
+          "enum": [
+            "active",
+            "stale"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "role",
+        "label",
+        "attached_at",
+        "last_heartbeat_at",
+        "stale_since"
+      ],
+      "title": "AttachmentStatus",
+      "type": "object"
+    },
+    "millm__api__schemas__weights__DetachResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "barrier": {
+          "enum": [
+            "serving",
+            "quiesced"
+          ],
+          "title": "Barrier",
+          "type": "string"
+        },
+        "weights_state": {
+          "enum": [
+            "clean",
+            "writing",
+            "torn"
+          ],
+          "title": "Weights State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "weights_state",
+        "barrier"
+      ],
+      "title": "DetachResponse",
+      "type": "object"
+    }
+  },
+  "$id": "https://hitsai.net/schemas/millm-weights-api-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "GENERATED from miLLM's registered /api/weights/* routes (their response_model declarations, via FastAPI's OpenAPI); do not edit by hand. Every route answers in the management envelope {success, data, error}. Keys of `responses` are '<METHOD> <path>'; each value is that route's success-response schema.",
+  "responses": {
+    "GET /api/weights/adapter": {
+      "$ref": "#/$defs/ApiResponse_AdapterStatus_"
+    },
+    "GET /api/weights/lineage": {
+      "$ref": "#/$defs/ApiResponse_LineageResponse_"
+    },
+    "GET /api/weights/status": {
+      "$ref": "#/$defs/ApiResponse_WeightsStatus_"
+    },
+    "POST /api/weights/adapter/load": {
+      "$ref": "#/$defs/ApiResponse_AdapterLoadResponse_"
+    },
+    "POST /api/weights/adapter/unload": {
+      "$ref": "#/$defs/ApiResponse_AdapterUnloadResponse_"
+    },
+    "POST /api/weights/attach": {
+      "$ref": "#/$defs/millm__api__schemas__common__ApiResponse_AttachResponse___2"
+    },
+    "POST /api/weights/clear-stale": {
+      "$ref": "#/$defs/ApiResponse_ClearStaleResponse_"
+    },
+    "POST /api/weights/commit-begin": {
+      "$ref": "#/$defs/ApiResponse_CommitBeginResponse_"
+    },
+    "POST /api/weights/commit-end": {
+      "$ref": "#/$defs/ApiResponse_CommitEndResponse_"
+    },
+    "POST /api/weights/detach": {
+      "$ref": "#/$defs/millm__api__schemas__common__ApiResponse_DetachResponse___2"
+    },
+    "POST /api/weights/heartbeat": {
+      "$ref": "#/$defs/ApiResponse_HeartbeatResponse_"
+    },
+    "POST /api/weights/load": {
+      "$ref": "#/$defs/ApiResponse_LoadResponse_"
+    },
+    "POST /api/weights/quiesce": {
+      "$ref": "#/$defs/ApiResponse_QuiesceResponse_"
+    },
+    "POST /api/weights/resume": {
+      "$ref": "#/$defs/ApiResponse_ResumeResponse_"
+    },
+    "POST /api/weights/save": {
+      "$ref": "#/$defs/ApiResponse_SaveResponse_"
+    }
+  },
+  "title": "miLLM weights API responses"
+}

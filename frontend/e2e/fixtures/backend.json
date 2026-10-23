@@ -1,0 +1,515 @@
+{
+  "/api/v1/gpus": {
+    "auto": true,
+    "available": false,
+    "devices": [],
+    "unavailable": {
+      "code": "nvidia_smi_unavailable",
+      "message": "nvidia-smi is not on PATH, so no device can be resolved. On a machine without a card this is expected: run with no GPU request, and the training step will refuse by name rather than guessing a device."
+    }
+  },
+  "/api/v1/hub/revision?repo=org%2Ftiny-tok&revision=main": {
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "has_config": false,
+    "has_tokenizer": true,
+    "has_weights": false,
+    "is_commit": false,
+    "repo": "org/tiny-tok",
+    "revision": "main",
+    "tokenizer_files": [
+      "tokenizer.json",
+      "tokenizer_config.json"
+    ]
+  },
+  "/api/v1/models/local?limit=500": {
+    "limit": 500,
+    "max_depth": 4,
+    "models": [
+      {
+        "architecture": "LlamaForCausalLM",
+        "config_path": "/data/checkpoints/bases/tiny/config.json",
+        "has_tokenizer": true,
+        "has_weights": true,
+        "kind": "directory",
+        "modified_at": "2026-10-15T00:00:00+00:00",
+        "path": "/data/checkpoints/bases/tiny",
+        "relative_path": "bases/tiny",
+        "root": "/data/checkpoints"
+      }
+    ],
+    "offset": 0,
+    "roots": [
+      "/data/checkpoints",
+      "/data/parts"
+    ],
+    "total": 1,
+    "unreadable_roots": []
+  },
+  "/api/v1/models/sources": {
+    "default": "load",
+    "model_roots": [
+      "/data/checkpoints",
+      "/data/parts"
+    ],
+    "modes": [
+      {
+        "available": true,
+        "capabilities_unavailable": [],
+        "default": true,
+        "message": null,
+        "mode": "load",
+        "reason": null,
+        "sources": [
+          "local_dir",
+          "hub"
+        ]
+      },
+      {
+        "available": true,
+        "capabilities_unavailable": [],
+        "default": false,
+        "message": null,
+        "mode": "create",
+        "reason": null,
+        "sources": [
+          "config"
+        ]
+      },
+      {
+        "available": false,
+        "capabilities_unavailable": [
+          "attach to a serving process's resident tensors",
+          "update weights in place while they are being served"
+        ],
+        "default": false,
+        "message": "Attach mode trains the weights a miLLM server is serving, in place. miLLM is not configured: set MILLM_BASE_URL to the miLLM server holding the model. miForge does not fall back to loading the same weights from disk, because that trains a different copy while reporting success.",
+        "mode": "attach",
+        "reason": "hot_update_mode_not_available",
+        "sources": [
+          "attached"
+        ]
+      }
+    ]
+  },
+  "/api/v1/packs": {
+    "packs": [
+      {
+        "created_at": "2026-10-14T00:00:00Z",
+        "definition_sha256": "eca7910c5b29ee524b89c365bacf0f279a1c93ae92acd7fc640cc8ad8a9bcd4c",
+        "derived_from": null,
+        "domain": "maryland notary language",
+        "is_example": false,
+        "name": "notary-md",
+        "pack_id": "notary-md",
+        "parts_filled": 3,
+        "parts_total": 7,
+        "prompt_count": 3,
+        "runs_using": [],
+        "validity": {
+          "missing_slots": [],
+          "retention_floor_missing": false,
+          "service_unavailable": [],
+          "state": "valid",
+          "unresolved": []
+        },
+        "version": "1"
+      }
+    ]
+  },
+  "/api/v1/parts?part_kind=prompt_set": {
+    "include_archived": false,
+    "items": [
+      {
+        "archived_at": null,
+        "caveats": [
+          {
+            "code": "amber_check",
+            "detail": {
+              "check": "C-5"
+            },
+            "message": "C-5: no completed audit sample is recorded for this version.",
+            "severity": "amber"
+          }
+        ],
+        "config_sha256": null,
+        "content_kind": "rows",
+        "contract_reference": {
+          "name": "support-tickets",
+          "type": "prompt-set",
+          "version": "3"
+        },
+        "dataset": "humor-format-balanced",
+        "external_provenance": null,
+        "id": "part-0a4d95c1407081661adf4306",
+        "imported_at": "2026-10-17T12:00:00Z",
+        "licence_classes": [
+          "permits_redistribution"
+        ],
+        "licences": [
+          {
+            "displayed": "cc-by-2.0",
+            "licence_class": "permits_redistribution",
+            "origin": "card_data",
+            "raw": "cc-by-2.0",
+            "table_version": 1
+          }
+        ],
+        "local_path": "/data/parts/part-0a4d95c1407081661adf4306",
+        "manifest_sha256": "e41e82afeb098b65be6226ee1a43e601864b188f4e04f37da6175ec5c5971247",
+        "part_kind": "prompt_set",
+        "recipe_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "rendered": "prompt-set/support-tickets@3",
+        "row_count": 3,
+        "source": "midataworks_contract",
+        "splits": [
+          {
+            "bytes": 63,
+            "evaluation_only": false,
+            "held_out": true,
+            "label_counts": {
+              "humorous": 122,
+              "not_humorous": 122
+            },
+            "logical_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "name": "test",
+            "path": "test.parquet",
+            "rows": 3,
+            "sha256": "625823f7a5f43a2b441c7a78505888174386880bb149c0b8b99ffad3ee5cf775",
+            "training_eligible": false
+          },
+          {
+            "bytes": 51,
+            "evaluation_only": false,
+            "held_out": false,
+            "label_counts": {
+              "humorous": 1104,
+              "not_humorous": 1104
+            },
+            "logical_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "name": "train",
+            "path": "train.parquet",
+            "rows": 3,
+            "sha256": "fece70d12595b363928f7d9e840d3a573ac222f4f0af03b6ab5d6d0f3ffc2c55",
+            "training_eligible": true
+          }
+        ],
+        "version_id": "7b5d1d0e-0000-4000-8000-000000000001",
+        "version_number": 2
+      }
+    ],
+    "total": 1
+  },
+  "/api/v1/run-types": {
+    "count": 3,
+    "run_types": [
+      {
+        "changes": "a low-rank adapter trained beside the base model, which is left unchanged",
+        "name": "adapter",
+        "stored_as": "adapter"
+      },
+      {
+        "changes": "every parameter of a model that already exists",
+        "name": "change",
+        "stored_as": "change"
+      },
+      {
+        "changes": "a new model built from an architecture config, randomly initialized",
+        "name": "create",
+        "stored_as": "create"
+      }
+    ]
+  },
+  "/api/v1/runs/run-seeded-1": {
+    "acquisition_mode": null,
+    "all_fired": [],
+    "archived_at": null,
+    "attachment": null,
+    "cadences": null,
+    "cancel_requested_at": null,
+    "domain": null,
+    "failure_code": null,
+    "failure_message": null,
+    "footprint": null,
+    "heartbeat": {
+      "age_seconds": null,
+      "heartbeat_at": null,
+      "lapse_threshold_seconds": 900,
+      "lapsed": false,
+      "longest_gap_seconds": null
+    },
+    "last_step": 40,
+    "retention_exposure_steps": null,
+    "round": null,
+    "run_id": "run-seeded-1",
+    "run_type": "change",
+    "seed": null,
+    "status": "completed",
+    "stop_conditions": null,
+    "stop_detail": null,
+    "stop_reason": "step_count"
+  },
+  "/api/v1/runs/run-seeded-1/checkpoints": {
+    "checkpoints": [],
+    "latest_step": null,
+    "run_id": "run-seeded-1",
+    "steps_on_disk": []
+  },
+  "/api/v1/runs/run-seeded-1/scores": {
+    "exposure_window_steps": 0,
+    "provider_discontinuities": [],
+    "retention_every": 1,
+    "run_id": "run-seeded-1",
+    "scores": [],
+    "test_every": 1
+  },
+  "/api/v1/runs/run-seeded-1/steps": {
+    "count": 0,
+    "limit": 100,
+    "next_before_step": null,
+    "run_id": "run-seeded-1",
+    "steps": []
+  },
+  "/api/v1/runs?limit=25&offset=0": {
+    "include_archived": false,
+    "limit": 25,
+    "offset": 0,
+    "run_types": [
+      "adapter",
+      "change",
+      "create"
+    ],
+    "runs": [
+      {
+        "archived_at": null,
+        "created_at": "2026-10-16T09:00:00+00:00",
+        "failure_code": null,
+        "finished_at": "2026-10-16T10:00:00+00:00",
+        "last_step": 40,
+        "run_id": "run-seeded-1",
+        "run_type": "change",
+        "status": "completed",
+        "stop_reason": "step_count"
+      }
+    ],
+    "statuses": [
+      "cancelled",
+      "completed",
+      "failed",
+      "pending",
+      "running"
+    ],
+    "total": 1
+  },
+  "/api/v1/selectors": [
+    {
+      "available": true,
+      "forms": [
+        "selector"
+      ],
+      "name": "composite",
+      "requires": "none",
+      "summary": "all, any or majority over other configured selectors; undecided propagates, and a decidable composite never waits on a pending human",
+      "unavailable_reason": null
+    },
+    {
+      "available": false,
+      "forms": [
+        "selector"
+      ],
+      "name": "human_review",
+      "requires": "midataworks",
+      "summary": "a person adjudicates in-run, through miDataworks' review queue; returns undecided until a decision exists, and a timeout never admits",
+      "unavailable_reason": "midataworks_not_configured"
+    },
+    {
+      "available": false,
+      "forms": [
+        "grader",
+        "selector"
+      ],
+      "name": "judge_model",
+      "requires": "generation_provider",
+      "summary": "a second model scores the completion against a prompt template, over any OpenAI-compatible endpoint; it is never the model being trained",
+      "unavailable_reason": "judge_provider_not_configured"
+    },
+    {
+      "available": true,
+      "forms": [
+        "grader",
+        "selector"
+      ],
+      "name": "reference_match",
+      "requires": "none",
+      "summary": "exact or fuzzy similarity to a reference answer; the mode and the metric are recorded, because a verdict is not comparable across them",
+      "unavailable_reason": null
+    },
+    {
+      "available": true,
+      "forms": [
+        "selector"
+      ],
+      "name": "rule",
+      "requires": "none",
+      "summary": "regex, length bounds, required terms, forbidden terms and structure - pure, in-process, no model and no network",
+      "unavailable_reason": null
+    }
+  ],
+  "/api/v1/signal-sources": {
+    "available": 2,
+    "count": 4,
+    "sources": [
+      {
+        "available": true,
+        "name": "corpus",
+        "objective": "sft",
+        "part_kind": "corpus",
+        "requires": {
+          "generation_provider": false,
+          "grader": false,
+          "part_kind": "corpus",
+          "selector": false
+        },
+        "summary": "plain text or chat examples from a dataset version, trained with next-token cross-entropy; no generation, no selection and no other app needed",
+        "unavailable_reason": null
+      },
+      {
+        "available": true,
+        "name": "preference-pairs",
+        "objective": "dpo",
+        "part_kind": "preference_pairs",
+        "requires": {
+          "generation_provider": false,
+          "grader": false,
+          "part_kind": "preference_pairs",
+          "selector": false
+        },
+        "summary": "chosen/rejected pairs from a dataset version, or two generations ordered by a scalar - trained with a direct preference objective",
+        "unavailable_reason": null
+      },
+      {
+        "available": false,
+        "name": "reward",
+        "objective": "grpo",
+        "part_kind": "prompt_set",
+        "requires": {
+          "generation_provider": true,
+          "grader": true,
+          "part_kind": "prompt_set",
+          "selector": false
+        },
+        "summary": "N completions per prompt, each scored by a grader, trained with a group-relative policy gradient and no value network",
+        "unavailable_reason": "inference_provider_unavailable"
+      },
+      {
+        "available": false,
+        "name": "self-generation",
+        "objective": "sft",
+        "part_kind": "prompt_set",
+        "requires": {
+          "generation_provider": true,
+          "grader": false,
+          "part_kind": "prompt_set",
+          "selector": true
+        },
+        "summary": "the model answers its own domain prompts and a selector decides which answers become training examples - the accepted ones are supervised examples",
+        "unavailable_reason": "inference_provider_unavailable"
+      }
+    ]
+  },
+  "/api/v1/stop-conditions": {
+    "closed": true,
+    "conditions": [
+      {
+        "condition": "step_count",
+        "configured": true,
+        "precedence_rank": 4,
+        "required_parameters": [
+          "total"
+        ],
+        "summary": "Stops when the run has completed a set number of steps."
+      },
+      {
+        "condition": "test_threshold",
+        "configured": true,
+        "precedence_rank": 2,
+        "required_parameters": [
+          "threshold"
+        ],
+        "summary": "Stops when the latest test score reaches the threshold or higher."
+      },
+      {
+        "condition": "retention_floor",
+        "configured": false,
+        "precedence_rank": 1,
+        "required_parameters": [],
+        "summary": "Stops when a retention score falls below the floor."
+      },
+      {
+        "condition": "loss_plateau",
+        "configured": true,
+        "metrics": [
+          "raw",
+          "window_mean"
+        ],
+        "precedence_rank": 3,
+        "required_parameters": [
+          "metric",
+          "window",
+          "min_relative_improvement",
+          "min_steps"
+        ],
+        "summary": "Stops when the chosen loss metric stops improving over a window of steps."
+      },
+      {
+        "condition": "operator_stop",
+        "configured": false,
+        "precedence_rank": 0,
+        "required_parameters": [],
+        "summary": "Stops when an operator cancels the run."
+      }
+    ],
+    "count": 5,
+    "minimum_enabled": 1,
+    "precedence": [
+      "operator_stop",
+      "retention_floor",
+      "test_threshold",
+      "loss_plateau",
+      "step_count"
+    ]
+  },
+  "/api/v1/tokenizers/local?limit=500": {
+    "limit": 500,
+    "max_depth": 4,
+    "offset": 0,
+    "roots": [
+      "/data/checkpoints",
+      "/data/parts"
+    ],
+    "tokenizers": [
+      {
+        "kind": "tokenizer",
+        "modified_at": "2026-10-16T00:00:00+00:00",
+        "path": "/data/checkpoints/tokenizers/tiny-tok",
+        "relative_path": "tokenizers/tiny-tok",
+        "root": "/data/checkpoints",
+        "tokenizer_files": [
+          "tokenizer.json",
+          "tokenizer_config.json"
+        ]
+      },
+      {
+        "kind": "model",
+        "modified_at": "2026-10-15T00:00:00+00:00",
+        "path": "/data/checkpoints/bases/tiny",
+        "relative_path": "bases/tiny",
+        "root": "/data/checkpoints",
+        "tokenizer_files": [
+          "tokenizer.json"
+        ]
+      }
+    ],
+    "total": 2,
+    "unreadable_roots": []
+  }
+}

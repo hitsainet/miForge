@@ -1,0 +1,323 @@
+name: Sync to Clean Repository
+
+# Publishes a FILTERED, SINGLE-COMMIT snapshot of this private repo to the
+# public mirror (hitsainet/miForge). Adapted from miStudio's sync, which is the
+# hardened version — NOT miLLM's, which still force-pushes the branch itself.
+#
+# ── WHY AN ORPHAN COMMIT, NOT A FILTERED BRANCH ─────────────────────────────
+# Removing excluded paths and force-pushing `main` leaves the TIP clean but
+# ships every earlier commit with it, so any excluded file stays one
+# `git show HEAD~1:<path>` away. GitHub serves commits by SHA whether or not
+# they are reachable, so a later force-push does not retract them. miStudio
+# published an SSH password and five database dumps exactly that way
+# (MIS-E2E-143).
+#
+# `git checkout --orphan` creates a commit with NO PARENTS. Excluded by
+# construction: there is no history to leak because none is pushed.
+#
+# ── WHAT DIFFERS FROM miStudio'S COPY, AND WHY ─────────────────────────────
+# * AGENT.md and GEMINI.md are excluded. In the xcc template CLAUDE.md is only
+#   `@AGENT.md`; the real project memory lives in AGENT.md, which miStudio's
+#   list does not name. Copied verbatim, this would have published every
+#   status note and decision recorded there.
+# * The `deploy-manual` dispatch matches miStudio's (added 2026-10-20 with manual/): the
+#   mirror's Pages deploy cannot rely on a `paths:` filter over an orphan force-push.
+# * Verify requires README.md and LICENSE instead of miStudio's docs/
+#   contracts, so it cannot pass vacuously on an empty snapshot.
+# * Tag retargeting tolerates a mirror with no tags, which the first run has.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  # ── THE MIRROR TRUSTS THIS REPOSITORY'S CI (operator directive, 2026-10-20) ────────────
+  # The mirror's image build used to wait for the MIRROR's own Backend Tests run - the same
+  # suite again on the same code. It now only checks that the snapshot carries the
+  # `Private-CI: passed` trailer the `sync` job below writes, so nothing may be published
+  # until every CI workflow that runs on main HERE has passed for the exact commit: Backend
+  # Tests (lint, every SQLite and PostgreSQL shard), Frontend Tests and Manual Build.
+  # docs-check is NOT required: it validates the private 0xcc/ document chain, none of which
+  # ships, and it has never gated an image. `.github/scripts/private_ci_gate.py` decides;
+  # backend/tests/unit/test_private_ci_trust.py pins this wiring from the parsed YAML and
+  # requires REQUIRED_WORKFLOWS to name every such workflow (docs-check by named exemption).
+  gate:
+    name: Require private CI to have passed
+    if: github.repository == 'Onegaishimas/miForge' || github.repository == 'Onegaishimas/miforge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read     # list this commit's workflow runs and their jobs
+      contents: read
+    outputs:
+      sha: ${{ steps.gate.outputs.sha }}
+    env:
+      REQUIRED_WORKFLOWS: |
+        backend-tests.yml
+        frontend-tests.yml
+        manual-ci.yml
+    steps:
+      - name: Checkout source repository (full history, for ancestry checks)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install the gate's one dependency
+        run: pip install pyyaml==6.0.3
+
+      - name: Require private CI to have passed for this commit
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: python .github/scripts/private_ci_gate.py
+
+  sync:
+    needs: gate
+    # HARD STOP: only run in the private source repo. Both casings, because a
+    # gate that fails to match does not error — the job is silently skipped.
+    if: github.repository == 'Onegaishimas/miForge' || github.repository == 'Onegaishimas/miforge'
+
+    runs-on: ubuntu-latest
+
+    # ONE SYNC AT A TIME, IN ORDER. Each sync now waits for its commit's CI, so two pushes
+    # minutes apart can finish their gates out of order. Queued syncs run one by one (a newer
+    # queued sync replaces an older queued one), and "Never move the mirror backwards"
+    # refuses to publish a commit older than the one the mirror already holds.
+    concurrency:
+      group: sync-to-clean-mirror
+      cancel-in-progress: false
+
+    env:
+      MIRROR: hitsainet/miForge
+
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+        with:
+          # A snapshot needs no history; fetching it is what made the leak possible.
+          fetch-depth: 1
+          # EXACTLY the commit the gate passed: the pushed head, or for a tag event the
+          # tagged commit (never whatever main has since become).
+          ref: ${{ needs.gate.outputs.sha }}
+
+      # A branch sync publishes only if its commit is the private main's current head, or
+      # is at or ahead of the commit the mirror already holds (its Source-Commit trailer).
+      # Tag syncs are exempt: a release snapshots the tagged tree, as it always has.
+      - name: Never move the mirror backwards
+        id: order
+        if: github.ref_type == 'branch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNC_TOKEN: ${{ secrets.HITSAINET_SYNC }}
+          SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          HEAD_NOW="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          MSG="$(GH_TOKEN="${SYNC_TOKEN}" gh api "repos/${MIRROR}/commits/main" --jq .commit.message 2>/dev/null || true)"
+          PUBLISHED="$(git interpret-trailers --parse <<< "$MSG" | sed -n '/^Source-Commit: /{s///p;q;}')"
+          if [ "$SHA" = "$HEAD_NOW" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"; echo "${SHA} is main's head - publishing."
+          elif [ -z "$PUBLISHED" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"; echo "The mirror records no Source-Commit yet - publishing."
+          else
+            STATUS="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${PUBLISHED}...${SHA}" --jq .status)"
+            case "$STATUS" in
+              ahead|identical)
+                echo "publish=true" >> "$GITHUB_OUTPUT"; echo "${SHA} is ${STATUS} of the published ${PUBLISHED} - publishing." ;;
+              *)
+                echo "publish=false" >> "$GITHUB_OUTPUT"
+                echo "::notice::Not publishing ${SHA}: it is ${STATUS} relative to the mirror's ${PUBLISHED}, and main has moved on to ${HEAD_NOW}." ;;
+            esac
+          fi
+
+      - name: Remove excluded files and folders
+        if: steps.order.outputs.publish != 'false'
+        run: |
+          set -euo pipefail
+          rm -rf 0xcc/
+          rm -rf .claude/
+          rm -f CLAUDE.md AGENT.md GEMINI.md
+          rm -rf backups/
+          rm -rf scripts/
+          rm -rf .understand-anything/
+          # docs/ is dev-internal except vendored public contracts under
+          # docs/schemas/, matching miStudio and miLLM - and the generated MCP contract
+          # (F12), which miStudio's sync also keeps: test_mcp_contract_generated.py reads it,
+          # so stripping it would turn the mirror's Backend Tests red and block the image.
+          # Guarded because `find`
+          # on a missing directory exits non-zero and would fail this step.
+          if [ -d docs ]; then
+            find docs/ -mindepth 1 -maxdepth 1 ! -name schemas ! -name mcp-contract.md -exec rm -rf {} +
+          fi
+          echo "Removed excluded files"
+
+      - name: Build the orphan snapshot
+        if: steps.order.outputs.publish != 'false'
+        env:
+          SOURCE_SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+
+          # The version lives in ONE place, pyproject.toml ([project].version); frontend/package.json
+          # must agree (pinned by tests/unit/test_version_agrees.py). There is no VERSION file: reading
+          # one that never existed is why every snapshot used to say "miForge unknown".
+          VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
+
+          git checkout --orphan clean
+          git add -A
+          # The trailers are what the mirror's image build checks (docker-images.yml, job
+          # `private-ci`): the source commit, and that the `gate` job passed its CI.
+          git commit -m "miForge ${VERSION} — filtered snapshot from ${SOURCE_SHA::7}" \
+            --trailer "Source-Commit: ${SOURCE_SHA}" --trailer "Private-CI: passed"
+
+          PARENTS="$(git rev-list --parents -n1 HEAD | wc -w)"
+          if [ "$PARENTS" -ne 1 ]; then
+            echo "::error::orphan commit has parents — refusing to push"
+            exit 1
+          fi
+          echo "Built orphan snapshot: $(git rev-parse --short HEAD)"
+
+      - name: Push to clean repository
+        if: steps.order.outputs.publish != 'false'
+        env:
+          SYNC_TOKEN: ${{ secrets.HITSAINET_SYNC }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SYNC_TOKEN}" ]; then
+            echo "::error::HITSAINET_SYNC is not set on this repo, so nothing can be pushed"
+            exit 1
+          fi
+          git config --unset-all http.https://github.com/.extraheader || true
+          git config --global --unset-all http.https://github.com/.extraheader || true
+
+          REMOTE="https://x-access-token:${SYNC_TOKEN}@github.com/${MIRROR}.git"
+          git push --force "$REMOTE" clean:main
+
+          # Tags must point at the orphan, never the source commit: pushing a
+          # source tag pushes that commit AND its ancestors, reintroducing the
+          # history the snapshot exists to exclude.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            git tag -f "$TAG" HEAD
+            git push --force "$REMOTE" "refs/tags/${TAG}"
+            echo "Tagged the orphan snapshot as ${TAG}"
+          fi
+
+          # Retarget stale tags: any other ref keeps old commits reachable, and
+          # a clone then fetches the whole history back. `|| true` because the
+          # first run finds no tags, and grep -v on empty input exits 1.
+          for ref in $(git ls-remote --tags "$REMOTE" | awk '{print $2}' | grep -v '\^{}$' || true); do
+            T="${ref#refs/tags/}"
+            git tag -f "$T" HEAD
+            git push --force "$REMOTE" "refs/tags/${T}"
+            echo "Retargeted stale tag ${T} onto the snapshot"
+          done
+
+      # The check whose absence let MIS-E2E-143 run unnoticed for months: clone
+      # the PUBLISHED result and assert the exclusions hold in every commit.
+      - name: Verify the published mirror
+        if: steps.order.outputs.publish != 'false'
+        env:
+          SYNC_TOKEN: ${{ secrets.HITSAINET_SYNC }}
+        run: |
+          set -euo pipefail
+          REMOTE="https://x-access-token:${SYNC_TOKEN}@github.com/${MIRROR}.git"
+          rm -rf /tmp/verify
+          git clone --quiet "$REMOTE" /tmp/verify
+          cd /tmp/verify
+
+          FAILED=0
+
+          # --all covers tags too: a tag on old history keeps it reachable even
+          # when main is a clean orphan.
+          COMMITS="$(git rev-list --all --count)"
+          echo "Published commits: ${COMMITS}"
+          if [ "$COMMITS" -ne 1 ]; then
+            echo "::error::mirror has ${COMMITS} commits; a snapshot must have exactly 1"
+            echo "::error::a ref other than main is probably anchoring old history:"
+            git show-ref | sed 's/^/    /'
+            FAILED=1
+          fi
+
+          for p in 0xcc .claude CLAUDE.md AGENT.md GEMINI.md backups scripts .understand-anything; do
+            if [ -n "$(git log --all --oneline -- "$p" 2>/dev/null)" ]; then
+              echo "::error::LEAK — '${p}' is present in published history"
+              FAILED=1
+            fi
+          done
+
+          # Positive control. A clone that silently came back empty would pass
+          # every absence check above, so these must be present.
+          # manual/ and the generated MCP contract are what the Pages deploy builds from.
+          for p in README.md LICENSE manual/docusaurus.config.ts manual/package-lock.json docs/mcp-contract.md; do
+            if [ ! -e "$p" ]; then
+              echo "::error::MISSING — '${p}' must be published but is absent"
+              FAILED=1
+            fi
+          done
+
+          # The verdict the mirror's image build requires (docker-images.yml, `private-ci`).
+          TRAILERS="$(git log -1 --format='%(trailers:only,unfold)' HEAD)"
+          if ! grep -qx "Source-Commit: ${{ needs.gate.outputs.sha }}" <<< "$TRAILERS" \
+             || ! grep -qx "Private-CI: passed" <<< "$TRAILERS"; then
+            echo "::error::the published snapshot lacks its Source-Commit / Private-CI trailers;"
+            echo "::error::the mirror's image build will refuse it"
+            FAILED=1
+          fi
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::mirror verification FAILED"
+            exit 1
+          fi
+          echo "Mirror verified: 1 commit, no excluded path in any commit."
+
+      # ── TRIGGER THE MIRROR'S MANUAL DEPLOY EXPLICITLY (as miStudio's sync does) ────────
+      # `deploy-manual.yml` filters on `paths: ['manual/**', ...]`, and a path filter needs a
+      # diff base. The mirror receives a FORCE-PUSHED, SINGLE-COMMIT ORPHAN, so there is no
+      # previous commit to diff against and the filter matches nothing: miStudio's manual sat
+      # eighteen days stale that way before its sync gained this call.
+      #
+      # Dispatched on every sync, not only when manual/ changed: the MCP tool page is generated
+      # from docs/mcp-contract.md, which a backend change can change.
+      #
+      # ITS OWN STEP, AFTER "Verify", ON PURPOSE. A refused dispatch (no workflow on the mirror,
+      # a token without the workflow scope) must turn the sync red rather than leave a manual
+      # that silently stops updating - but it must not stop the verification of what was just
+      # published, which is why miStudio's inline, non-failing call is not copied as is. The
+      # retries cover the seconds after a push in which a just-pushed workflow can 404.
+      - name: Dispatch the mirror's manual deploy
+        if: steps.order.outputs.publish != 'false'
+        env:
+          SYNC_TOKEN: ${{ secrets.HITSAINET_SYNC }}
+        run: |
+          set -euo pipefail
+          URL="https://api.github.com/repos/${MIRROR}/actions/workflows/deploy-manual.yml/dispatches"
+          for attempt in 1 2 3; do
+            CODE="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer ${SYNC_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$URL" -d '{"ref":"main"}')" || CODE="curl-error"
+            echo "dispatch attempt ${attempt}: HTTP ${CODE}"
+            if [ "$CODE" = "204" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::could not dispatch deploy-manual on ${MIRROR} (last answer: ${CODE}); the published manual will not update"
+          exit 1

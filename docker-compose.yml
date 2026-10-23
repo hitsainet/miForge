@@ -1,0 +1,525 @@
+# ⚠⚠ DEVELOPMENT ONLY. THIS FILE IS NOT A DEPLOYMENT MECHANISM. ⚠⚠
+#
+# Foundation task 8.1; ADR-023. The production path is GitOps and only GitOps:
+# private primary → orphan-snapshot mirror → images built in CI on the mirror →
+# ArgoCD with Image Updater digest pins on `gitops/pilot` (ADR-019). The manifests
+# that actually run miForge are in `gitops/pilot/`.
+#
+# ADR-023 states the reason this warning is the first thing in the file: *"a compose
+# file that drifts into being the deploy story is how two deployment mechanisms start
+# disagreeing."* So nothing here is allowed to become the only place a setting is
+# written down. If you find yourself tuning a value here to make the cluster behave,
+# the value belongs in `gitops/pilot/` and you are editing the wrong file.
+#
+# ── THE SHORTEST USEFUL COMMAND ────────────────────────────────────────────────────
+#   docker compose up postgres redis
+# Then run the backend, the worker and Vite from source. That is the normal loop and
+# the one miDataworks' compose supports exclusively. The three application services
+# below exist because ADR-023 names them, and because `docker compose up` should bring
+# up something that works for someone who has not read this file.
+#
+# ── NO GPU IS REQUIRED, AND THAT IS A REQUIREMENT ──────────────────────────────────
+# ADR-023: *"a developer without a GPU can run everything except a training step."* So
+# NO service here reserves a device. The reservation block is written out, commented, on
+# `celery-train` — uncomment it only on a machine with a card. A required GPU in this
+# file would make the laptop path the exception instead of the rule.
+#
+# ── HOST PORTS ARE DELIBERATELY NOT THE DEFAULTS ───────────────────────────────────
+# miLLM, miStudio and miDataworks are checked out side by side on one workstation and
+# already hold 5432, 6379, 8000 and 5173. Each port below is overridable.
+
+name: miforge-dev
+
+services:
+  postgres:
+    # ADR-003: PostgreSQL 15, the major version production runs. A dev database on a
+    # different major cannot reproduce a migration that only fails on the deployed one.
+    image: postgres:15
+    container_name: miforge-dev-postgres
+    environment:
+      POSTGRES_USER: miforge
+      POSTGRES_PASSWORD: ${MIFORGE_PG_PASSWORD:-miforge-dev}
+      POSTGRES_DB: miforge
+    ports:
+      - "127.0.0.1:${MIFORGE_PG_PORT:-55434}:5432"
+    volumes:
+      - miforge-dev-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U miforge -d miforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    # ADR-003: Redis 7 — Celery broker and the progress channel, NEVER a store of
+    # record. Nothing here persists it, which is the point: losing it must cost
+    # nothing but in-flight progress.
+    image: redis:7
+    container_name: miforge-dev-redis
+    ports:
+      - "127.0.0.1:${MIFORGE_REDIS_PORT:-56381}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ── Schema first, as a one-shot that must SUCCEED before the backend starts ───────
+  #
+  # ⚠ WITHOUT THIS THE STACK COMES UP EMPTY AND LIES ABOUT IT. Observed on 2026-10-14
+  # during the first real `--profile deploy` run: all five containers healthy, `GET /`
+  # 200, `/api/health` reporting postgres **ok**, and every data endpoint 500 with
+  # `relation "mf_runs" does not exist`. `/api/health` checks connectivity, not schema, so
+  # nothing in the stack noticed that no table existed.
+  #
+  # A ONE-SHOT SERVICE RATHER THAN AN ENTRYPOINT STEP, for three reasons:
+  #   * `service_completed_successfully` makes the ordering a declared dependency instead
+  #     of a sleep or a retry loop, and a failed migration stops the backend from starting
+  #     at all rather than letting it serve against a half-migrated schema;
+  #   * two backend replicas would otherwise race to migrate the same database — the same
+  #     hazard `backend-tests.yml` records for xdist workers, where parallel migration of
+  #     one database measured 29 errors against 458 passed serially;
+  #   * it is the shape Kubernetes wants too (an init container or a Job), so the compose
+  #     path and the GitOps path stay the same story rather than diverging.
+  #
+  # `alembic upgrade head` is idempotent, so a restart re-runs it harmlessly. It runs through
+  # `python -m db.migrate upgrade` (lock_timeout, a deadline, the blocker named in the log;
+  # backend/src/db/migration_safety.py), the same command as the cluster's init container.
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: miforge-backend:dev
+    container_name: miforge-migrate
+    command: ["python", "-m", "db.migrate", "upgrade"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://miforge:${MIFORGE_PG_PASSWORD:-miforge-dev}@postgres:5432/miforge
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: dev
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # NOT `unless-stopped`: this is a task, and a restart policy on a task that exits 0
+    # turns a completed migration into a crash-loop.
+    restart: "no"
+
+  backend:
+    # Built from the same Dockerfile CI publishes, so a dev run and a deployed run are
+    # the same image recipe. The CONTEXT IS THE REPOSITORY ROOT: `pyproject.toml` lives
+    # there and declares `backend/src` as the package root.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: miforge-backend:dev
+    container_name: miforge-dev-backend
+    depends_on:
+      # THE MIGRATION MUST HAVE SUCCEEDED, not merely started. Without this the
+      # service comes up against an empty schema and 500s on every data endpoint
+      # while reporting healthy - see the `migrate` service above.
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # In-cluster hostnames, not the localhost defaults in `core/config.py`.
+      DATABASE_URL: postgresql+psycopg://miforge:${MIFORGE_PG_PASSWORD:-miforge-dev}@postgres:5432/miforge
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: dev
+      LOG_LEVEL: DEBUG
+      # ⚠ Overriding the image's CMD is NOT needed: `backend/Dockerfile` already serves
+      # `api.app:create_asgi_app --factory`, which is the Socket.IO-wrapped app. If you
+      # add a `command:` here, wrap it the same way — serving `create_app` gives a
+      # working REST surface and silently dead live updates.
+      # ⚠ MILLM_BASE_URL and MIDATAWORKS_BASE_URL are DELIBERATELY ABSENT. Unset means
+      # absent-and-normal (ADR-010), so the default dev experience is the standalone
+      # one that BRD acceptance criterion 20 pins. Set them in `.env` when you want an
+      # integration; see `.env.example`.
+    ports:
+      - "127.0.0.1:${MIFORGE_API_PORT:-8010}:8000"
+    volumes:
+      - miforge-dev-checkpoints:/data/checkpoints
+      - miforge-dev-trainer-state:/data/trainer-state
+      - miforge-dev-runs:/data/runs
+      - miforge-dev-parts:/data/parts
+      # ⚠ ADDED 2026-10-14, AND ITS ABSENCE WAS A DATA-LOSS BUG, not a missing mount.
+      # `pack.json` became the AUTHORITATIVE record of a pack version the same day
+      # (`pack-definition-v1.json`: "THIS IS AN ON-DISK FILE ... not a database-only
+      # record"), which is what let `reindex` rebuild the pack index from disk. With no
+      # volume here, every committed pack lived in the container's writable layer and
+      # vanished on the next `up -d --force-recreate` — losing the authoritative copy and
+      # leaving the database index pointing at packs that no longer existed.
+      #
+      # It surfaced as a 500 rather than silent loss only by luck: `/data` is root-owned
+      # and the process runs as uid 10001, so `packs_root()`'s mkdir-on-demand got
+      # permission denied and `GET /api/v1/packs` failed loudly. Had `/data` been writable
+      # the stack would have looked healthy and quietly discarded packs.
+      - miforge-dev-packs:/data/packs
+      - miforge-dev-hf-cache:/data/hf-cache
+    networks:
+      default:
+        aliases:
+          # ⚠ LOAD-BEARING. `frontend/nginx.conf` proxies to `http://miforge-backend:8000`
+          # with one literal hostname so the same config file works in the cluster and
+          # here. This alias is the half of that arrangement that lives in this file;
+          # remove it and the frontend container fails to start with "host not found in
+          # upstream".
+          - miforge-backend
+
+  celery-train:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: miforge-backend:dev
+    container_name: miforge-dev-celery-train
+    depends_on:
+      # THE MIGRATION MUST HAVE SUCCEEDED, not merely started. Without this the
+      # service comes up against an empty schema and 500s on every data endpoint
+      # while reporting healthy - see the `migrate` service above.
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # ⚠ `--pool=solo -c 1` — ADR-006, and the two consequences are not optional
+    # knowledge, they are why the rest of the job machinery looks the way it does:
+    #
+    #   1. `revoke(terminate=True)` DOES NOT WORK. It signals a pool child process, and
+    #      the solo pool has none — the task runs in the worker process itself. So
+    #      cancellation is COOPERATIVE, checked at a step boundary (ADR-006, task 6.3).
+    #   2. A BUSY SOLO WORKER NEVER READS THE CONTROL QUEUE. While a step is running it
+    #      is not listening, so nothing reaches a running job through Celery at all.
+    #      Reach it through the DATABASE.
+    #
+    # Why solo anyway: a training step owns a GPU. A prefork pool would fork a process
+    # holding CUDA context, which is a different and worse failure.
+    #
+    # `-A workers.celery_app:celery_app` names the ATTRIBUTE explicitly. Celery's `-A
+    # <module>` would find it by scanning the module for a Celery instance, but the
+    # attribute here is `celery_app` rather than the `app` or `celery` that Celery looks
+    # for by name — so the scan is what would be doing the work, and a second Celery
+    # instance appearing in that module later would make which one is picked arbitrary.
+    #
+    # ⚠ NO BEAT PROCESS HERE, AND THEREFORE NO PERIODIC JANITOR SWEEP.
+    # `workers/celery_app.py` declares a `beat_schedule` with a `janitor-sweep` entry,
+    # and a schedule with no beat running fires NEVER. That is tolerable in development
+    # and is NOT tolerable in the cluster, where `gitops/pilot/backend.yaml` runs Beat
+    # as its own container. To exercise the sweep locally, run it alongside:
+    #
+    #     docker compose exec celery-train celery -A workers.celery_app:celery_app beat --loglevel=INFO
+    #
+    # Its schedule file then sits on that container's writable layer and is lost with it -
+    # the same as the cluster's `--schedule=/tmp/celerybeat-schedule`, and safe for the same
+    # reason: every beat entry is restart-safe (short intervals, a wall-clock crontab for the
+    # hourly checkpoint-prune), so a lost file never stops a sweep. See the beat note in
+    # `gitops/pilot/backend.yaml`.
+    #
+    # Deliberately not a sixth service: the foundation backlog names five, and a compose
+    # file is not where the deployment topology gets decided (see this file's header).
+    command:
+      - celery
+      - -A
+      - workers.celery_app:celery_app
+      - worker
+      - --pool=solo
+      - -c
+      - "1"
+      - -Q
+      - train
+      - -n
+      - train@%h
+      - --loglevel=INFO
+    environment:
+      DATABASE_URL: postgresql+psycopg://miforge:${MIFORGE_PG_PASSWORD:-miforge-dev}@postgres:5432/miforge
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: dev
+      LOG_LEVEL: DEBUG
+    volumes:
+      - miforge-dev-checkpoints:/data/checkpoints
+      - miforge-dev-trainer-state:/data/trainer-state
+      - miforge-dev-runs:/data/runs
+      - miforge-dev-parts:/data/parts
+      # ⚠ ADDED 2026-10-14, AND ITS ABSENCE WAS A DATA-LOSS BUG, not a missing mount.
+      # `pack.json` became the AUTHORITATIVE record of a pack version the same day
+      # (`pack-definition-v1.json`: "THIS IS AN ON-DISK FILE ... not a database-only
+      # record"), which is what let `reindex` rebuild the pack index from disk. With no
+      # volume here, every committed pack lived in the container's writable layer and
+      # vanished on the next `up -d --force-recreate` — losing the authoritative copy and
+      # leaving the database index pointing at packs that no longer existed.
+      #
+      # It surfaced as a 500 rather than silent loss only by luck: `/data` is root-owned
+      # and the process runs as uid 10001, so `packs_root()`'s mkdir-on-demand got
+      # permission denied and `GET /api/v1/packs` failed loudly. Had `/data` been writable
+      # the stack would have looked healthy and quietly discarded packs.
+      - miforge-dev-packs:/data/packs
+      - miforge-dev-hf-cache:/data/hf-cache
+    # A worker serves no HTTP, so the image's API healthcheck would report it unhealthy
+    # forever. Its liveness is the DATABASE HEARTBEAT (ADR-007) — the lesson from
+    # miStudio reaping a live 5.8-hour job as "worker lost" because its only sign of
+    # life was the socket.
+    healthcheck:
+      disable: true
+    # ── UNCOMMENT ON A MACHINE WITH A CARD ─────────────────────────────────────────
+    # A training step needs a GPU; nothing else here does. Left commented because a
+    # device reservation makes `docker compose up` fail outright on a machine without
+    # one, which would invert ADR-023.
+    #
+    # Requires the nvidia container toolkit on the host.
+    #
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    #
+    # ⚠ `count: all`, never `count: 1`. ADR-008 resolves a device by UUID from live
+    # `nvidia-smi -L` at submit; handing the container exactly one card chosen by the
+    # runtime is how miLLM ended up on the wrong GPU when a second one appeared.
+
+  # ── F11 hot-update: the train worker with the HOST's IPC namespace, OPT-IN ─────────
+  # Suite decision D1 (2026-10-16): CUDA IPC between this trainer and a miLLM process in
+  # ANOTHER container needs a shared IPC namespace, granted only when hot-update is used.
+  # Behind the `hotupdate` profile, so `docker compose up` never starts it and the default
+  # `celery-train` above is unchanged (pinned by
+  # `backend/tests/unit/test_gitops_hostipc_overlay.py`). To use it, on a machine with a
+  # card and with miLLM's container also on `ipc: host`:
+  #
+  #     docker compose stop celery-train
+  #     docker compose --profile hotupdate up -d celery-train-hotupdate
+  #
+  # Stop the default worker first: both consume the `train` queue, and while the GPU lease
+  # refuses the second run loudly (ADR-008), a refusal is not a configuration. The GPU
+  # reservation block on `celery-train` is commented out for ADR-023; uncomment it there
+  # and `extends` carries it here.
+  celery-train-hotupdate:
+    profiles: ["hotupdate"]
+    extends:
+      service: celery-train
+    container_name: miforge-dev-celery-train-hotupdate
+    ipc: host
+
+  celery-maintenance:
+    # ⚠ ADDED 2026-10-14 WITH F6's TASK 7.0, AND ITS ABSENCE WAS AN UNREACHABLE
+    # CAPABILITY, not a missing convenience.
+    #
+    # `workers/celery_app.py` declares four queues and this file consumed exactly one of
+    # them. `maintenance` carries the janitor AND the chain sweep, and **the sweep is the
+    # only advance path a chain has** (FR-006.45): the finishing stage's own task
+    # deliberately does not enqueue its successor, because a worker dying between the
+    # terminal transition and the enqueue would stall the chain forever. So with no
+    # consumer here, `POST /chains` returned 202, stage one ran, and the curriculum sat at
+    # stage one forever — green tests, a healthy stack, and nothing anywhere saying why.
+    # That is the shape ADR-016 #1 exists to catch, and
+    # `test_maintenance_queue_has_a_consumer.py` is the control.
+    #
+    # ⚠ AND IT IS STILL NOT SUFFICIENT WITHOUT BEAT, which this file deliberately does not
+    # run — see the note on `celery-train`. A worker on this queue consumes what is
+    # enqueued; the sweep and the janitor are both *scheduled*, and a schedule with no beat
+    # process fires NEVER. In the cluster `gitops/pilot/backend.yaml` runs Beat as its own
+    # container. To advance a chain locally, run Beat alongside:
+    #
+    #     docker compose exec celery-maintenance celery -A workers.celery_app:celery_app beat --loglevel=INFO
+    #
+    # Stated here rather than left to be discovered: a developer whose chain does not
+    # advance needs to know it is the schedule and not their configuration.
+    #
+    # `default` and `generate` still have no consumer in this file. That is the foundation's
+    # to close (task 8.1 names five services) and is reported rather than quietly extended
+    # here; nothing F6 ships is enqueued onto either.
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: miforge-backend:dev
+    container_name: miforge-dev-celery-maintenance
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # ⚠ `--pool=solo -c 1`, like every worker (ADR-006). The two consequences are the same
+    # here as on `celery-train`: `revoke(terminate=True)` does not work, because solo has no
+    # pool child to signal, and a busy solo worker never reads the control queue. A chain is
+    # therefore reached through its `mf_chains` row and a running stage through its
+    # `mf_runs` row — never through a Celery control message.
+    #
+    # ⚠ NO GPU ENVIRONMENT, and withholding it is what makes the claim checkable rather
+    # than asserted: nothing on this queue touches a card. The chain sweep reads rows and
+    # submits; the training it submits runs on `train`.
+    command:
+      - celery
+      - -A
+      - workers.celery_app:celery_app
+      - worker
+      - --pool=solo
+      - -c
+      - "1"
+      - -Q
+      - maintenance
+      - -n
+      - maintenance@%h
+      - --loglevel=INFO
+    environment:
+      DATABASE_URL: postgresql+psycopg://miforge:${MIFORGE_PG_PASSWORD:-miforge-dev}@postgres:5432/miforge
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: dev
+      LOG_LEVEL: DEBUG
+    volumes:
+      # The same five roots as every other service. `/data/packs` is included for the
+      # reason its own note on `celery-train` gives: `packs_root` is declared in
+      # `packs/settings.py` rather than `core/config.py`, so a volume list written against
+      # one module cannot see it — twice in one day that split caused the same omission.
+      - miforge-dev-checkpoints:/data/checkpoints
+      - miforge-dev-trainer-state:/data/trainer-state
+      - miforge-dev-runs:/data/runs
+      - miforge-dev-parts:/data/parts
+      - miforge-dev-packs:/data/packs
+      - miforge-dev-hf-cache:/data/hf-cache
+    # A worker serves no HTTP, so the image's API healthcheck would report it unhealthy
+    # forever. Its liveness is the database heartbeat (ADR-007).
+    healthcheck:
+      disable: true
+
+  # ── The UI, twice, selected by PROFILE ────────────────────────────────────────────
+  #
+  # ⚠ TWO SERVICES, ONE OF THEM RUNS AT A TIME, AND NEITHER IS THE DEFAULT. Both carry a
+  # `profiles:` key, so `docker compose up` with no profile starts postgres, redis,
+  # backend and celery-train and **no UI at all**. That is deliberate: picking a UI is a
+  # choice between a hot-reloading dev server and the artifact that ships, and a default
+  # would hide which one a reader is looking at.
+  #
+  #   docker compose --profile dev    up     # Vite from source, hot reload, port 5174
+  #   docker compose --profile deploy up     # the published nginx image, port 8081
+  #
+  # WHY PROFILES RATHER THAN A SECOND COMPOSE FILE. A `docker-compose.deploy.yml`
+  # override cannot *remove* the dev service's `./frontend:/app` bind mount — Compose
+  # merges `volumes` by appending — so the source tree would silently survive into the
+  # deployment. A separate self-contained file avoids that and duplicates the other four
+  # services instead, which is the drift ADR-023 warns about in terms: *"a compose file
+  # that drifts into being the deploy story is how two deployment mechanisms start
+  # disagreeing."* Profiles give one file, one copy of each service, and an explicit
+  # choice on the command line.
+  #
+  # ⚠ ADR-023's "dev only" IS SUPERSEDED, by operator decision on 2026-10-14: *"all of
+  # the apps need to be able to deploy independently, and they all need to be able to
+  # deploy with Docker compose."* The `deploy` profile is that path. ADR-019's GitOps
+  # route is unchanged and remains how the cluster is fed; this is the second supported
+  # way to run the whole app, not a replacement.
+  frontend-dev:
+    profiles: ["dev"]
+    # Vite from source. Hot reload is the whole point of a dev compose file, and an nginx
+    # image serving a frozen `dist/` has none.
+    image: node:22-alpine
+    container_name: miforge-dev-frontend
+    working_dir: /app
+    # `npm install` rather than `npm ci`: there is no lockfile yet (foundation task
+    # 7.1). Swap to `npm ci` in the same commit that commits one.
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "127.0.0.1:${MIFORGE_UI_PORT:-5174}:5173"
+    volumes:
+      - ./frontend:/app
+      # Keeps the container's node_modules off the host bind mount: alpine's native
+      # modules are not the host's, and sharing the directory breaks both.
+      - miforge-dev-node-modules:/app/node_modules
+    depends_on:
+      - backend
+
+  frontend:
+    profiles: ["deploy"]
+    # THE ARTIFACT THAT SHIPS: the same `frontend/Dockerfile` CI publishes as
+    # `hitsai/miforge-frontend`, serving the built `dist/` through
+    # nginx-unprivileged (uid 101, port 8080, no root at any point).
+    #
+    # ⚠ THIS BUILD WAS IMPOSSIBLE OUTSIDE CI UNTIL 2026-10-14, and the reason is worth
+    # keeping. The context is `./frontend` — the Dockerfile's `COPY package.json` lines
+    # are relative to it — while the Dockerfile also does `COPY LICENSE /licenses/`, and
+    # the repository-root LICENSE is **not** in that context. CI hid it with a "Copy
+    # LICENSE to build context" step, so the image built there and `docker build
+    # ./frontend` failed everywhere else; the Dockerfile's own comment admitted a
+    # hand-build "needs `cp ../LICENSE frontend/` first". `frontend/LICENSE` is now a
+    # committed byte-identical copy, pinned by
+    # `backend/tests/unit/test_license_in_build_contexts.py`, exactly as `docs/schemas/`
+    # vendors its contracts. CI's `cp` still runs and overwrites an identical file.
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: miforge-frontend:local
+    container_name: miforge-frontend
+    # 8081, not 8080, because the container listens on 8080 and the dev UI already holds
+    # 5174 — a deploy run and a dev run must not fight over a port.
+    ports:
+      - "127.0.0.1:${MIFORGE_UI_DEPLOY_PORT:-8081}:8080"
+    # NO BIND MOUNT. The image carries its own `dist/`; mounting the source over it is
+    # the mistake a compose override would have made silently.
+    #
+    # ⚠ `service_healthy`, NOT a plain `depends_on`, AND THE REASON IS A 502 THAT LOOKS LIKE
+    # A CODE BUG. `nginx.conf` uses a LITERAL upstream (`proxy_pass
+    # http://miforge-backend:8000`), which nginx resolves ONCE AT CONFIG LOAD and then
+    # caches for the life of the process. A plain `depends_on` waits only for the backend
+    # container to *start*, so on a cold `up` nginx can load its config before the backend
+    # has an address and then 502 every request forever — while its own HEALTHCHECK reports
+    # **healthy**, because that check deliberately hits nginx's own `/health` and not the
+    # API ("a frontend restarted because the API is unhealthy is restarted for someone
+    # else's fault"). Observed exactly that way on 2026-10-14: five healthy containers,
+    # `GET /` returning 200, and every `/api/*` path 502.
+    #
+    # ⚠ AND THE CONVERSE IS STILL TRUE, SO IT IS WRITTEN DOWN RATHER THAN DISCOVERED:
+    # **recreating the backend later gives it a new container IP and nginx keeps the old
+    # one.** `docker compose up -d --force-recreate backend` leaves the UI 502ing until the
+    # frontend is restarted too. In Kubernetes this does not bite — a Service VIP is stable
+    # for the life of the Service — which is why the literal upstream is right there and is
+    # a sharp edge only under compose. If this becomes a nuisance, the fix is a `resolver`
+    # plus a `set $upstream ...` variable so nginx re-resolves per request; it is not done
+    # here because it changes behaviour on the GitOps path too, which is the one that
+    # currently works.
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mcp:
+    profiles: ["deploy"]
+    # F12: the MCP server, from the backend image with its own command (D10), as the cluster
+    # runs it (gitops/pilot/mcp.yaml). No database, Redis or volume: it reaches the backend
+    # over HTTP only, so the approval gate applies to every agent call.
+    #
+    # MCP_AUTH_TOKEN comes from the operator's `.env` (D6) and is REQUIRED: the server itself
+    # refuses to start over HTTP without one, loudly, in this container's log. `:-` and not
+    # `:?` on purpose - `:?` fails interpolation of the WHOLE file, so a developer running
+    # `--profile dev` without a token could not start anything. Never commit a value.
+    image: miforge-backend:dev
+    container_name: miforge-mcp
+    command: ["python", "-m", "mcp_server"]
+    environment:
+      MIFORGE_API_URL: http://backend:8000
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+      MCP_AGENT_IDENTITY: agent:forge-mcp
+      MCP_TOOL_CATEGORIES: adapters,chains,checkpoints,core,drafts,hotupdate,inputs,packs,runs,settings
+      NVIDIA_VISIBLE_DEVICES: void
+    ports:
+      - "127.0.0.1:${MIFORGE_MCP_PORT:-8765}:8765"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  miforge-dev-pgdata:
+  miforge-dev-packs:
+  miforge-dev-node-modules:
+  # The artifact roots. NAMED VOLUMES, not host bind mounts, so a `git clean` cannot
+  # delete a checkpoint — ADR-004 makes the filesystem the source of truth, and losing
+  # these loses the product rather than an index. Inspect one with:
+  #   docker run --rm -v miforge-dev_miforge-dev-checkpoints:/d alpine ls -R /d
+  miforge-dev-checkpoints:
+  miforge-dev-runs:
+  miforge-dev-trainer-state:
+  miforge-dev-parts:
+  miforge-dev-hf-cache:

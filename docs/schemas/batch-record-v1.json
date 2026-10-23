@@ -1,0 +1,529 @@
+{
+  "$defs": {
+    "BatchRecordV1": {
+      "additionalProperties": false,
+      "description": "The provenance of one training batch (BRD-02 R-02.8). Written by F2, read by F7 and carried verbatim as the run log's 'batch' block.\n\nIT CARRIES IDENTIFIERS AND HASHES AND NEVER PROMPT OR COMPLETION TEXT (ADR-020). That is not a size optimisation: the run log leaves this machine in exports and support bundles, and user prompt text in it would be a privacy breach that no schema check downstream could detect. A sibling project shipped exactly that bug by flipping one include_context argument, and its suite stayed green.\n\nThe batch CONTENT hash is what makes a step reproducible without the text: two runs that hash the same drew the same batch.",
+      "properties": {
+        "batch_sha256": {
+          "description": "Canonical hash of the batch's content (ADR-005's one function).",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "grader_config_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "parts": {
+          "items": {
+            "additionalProperties": false,
+            "description": "One part a batch drew from, identified EITHER by miDataworks contract reference OR by external provenance - exactly one of the two, which the oneOf below ENFORCES. This element shape is the seam two features each deferred to the other: one named it an open question and the other refuses rather than guess a spelling, so the silence left an adapter writer unbuildable. It is settled here because it is a gate contract. The oneOf was added 2026-10-14: until then this description claimed 'exactly one' while the schema enforced NEITHER half - an element naming no part at all validated clean, and so did one naming two. Found by F8, which had implemented the refusal in code and checked the contract rather than trusting its own description. That is the signature defect of this project - a normative document asserting a constraint nothing enforces - and it was in the contract written to settle the seam. The two 'default: null' annotations below are per-field and must not be read as a constructible pair: an element with both null is refused here.",
+            "oneOf": [
+              {
+                "description": "A suite part: the miDataworks contract reference is present and there is no external provenance.",
+                "properties": {
+                  "contract_reference": {
+                    "type": "object"
+                  },
+                  "external": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "contract_reference"
+                ]
+              },
+              {
+                "description": "An external part (R-02.40): its own provenance is present and it borrows no contract reference.",
+                "properties": {
+                  "contract_reference": {
+                    "type": "null"
+                  },
+                  "external": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "external"
+                ]
+              }
+            ],
+            "properties": {
+              "contract_reference": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "miDataworks' contract form for a dataset part: {type, name, version} (BRD-03 R-03.47). This is THEIR shape and is not restated or extended here - miForge prefixes its own pack identity for DISPLAY only ('<pack>/<type>/<name>@<version>'), which is a presentation layer and never a stored identity. Conflating the two layers is how a cross-repo handoff was once recorded for something neither side had agreed to build.",
+                    "properties": {
+                      "name": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "version": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "name",
+                      "version"
+                    ],
+                    "title": "ContractReference",
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "external": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "A part sourced from outside the suite, carrying its own provenance (R-02.40). Required when a part has no contract reference: a part with neither is refused, because an unattributed training input makes the run unreproducible and nothing downstream can say where a behaviour came from.",
+                    "properties": {
+                      "content_sha256": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "licence": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null
+                      },
+                      "retrieved_at": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "source": {
+                        "description": "A URL, a dataset identifier, or a human description.",
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "content_sha256",
+                      "retrieved_at"
+                    ],
+                    "title": "ExternalProvenance",
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "kind": {
+                "description": "Which slot of the run this part filled.",
+                "enum": [
+                  "prompt_set",
+                  "corpus",
+                  "preference_pairs",
+                  "test_set",
+                  "retention_set",
+                  "selector_config",
+                  "grader_config"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "contract_reference",
+              "external"
+            ],
+            "title": "PartReference",
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "prompt_ids": {
+          "description": "Identifiers, never the prompts themselves. An id is resolvable against the part it came from, so provenance survives without the text.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "resolved_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "For a self-generation source: WHICH model produced the candidates, as the provider resolved it. Null for a source that reads from a corpus. Required reading for a later comparison: candidates generated by two different models are not interchangeable."
+        },
+        "selection_health": {
+          "additionalProperties": false,
+          "description": "Whether selection is still producing signal. A selector that rejects everything and a selector that accepts everything both yield a run that trains on nothing useful while every step looks healthy - so the acceptance rate is recorded per batch rather than inferred later from a log nobody reads.",
+          "properties": {
+            "acceptance_rate": {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "candidates_admitted": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "candidates_generated": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "exhausted": {
+              "description": "True when the prompt set ran out before the batch was filled.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "candidates_generated",
+            "candidates_admitted",
+            "acceptance_rate",
+            "exhausted"
+          ],
+          "title": "SelectionHealth",
+          "type": "object"
+        },
+        "selector_config_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source": {
+          "description": "Which signal source filled this batch (BRD-02 R-02.4-R-02.7).\n\n**THIS ENUM IS IDENTICAL TO `checkpoint-manifest-v1.json`'s `signal_source`, BY VALUE AND BY SPELLING.** They are the same vocabulary seen at two moments - what filled the batch, and what trained the checkpoint - so a consumer passing one to the other must need no translation.\n\n*Corrected 2026-10-14, and it was mine. This enum read `[\"corpus\", \"self_generation\", \"preference_pairs\", \"mixed\"]` against the manifest's `[\"corpus\", \"self-generation\", \"preference-pairs\", \"reward\"]` - **sharing exactly one value out of four.** Two separate defects in one field:*\n\n*1. `reward` was absent, so a reward batch could not be recorded at all while the manifest happily accepted `reward` as what trained the checkpoint.*\n\n*2. `self_generation` vs `self-generation` and `preference_pairs` vs `preference-pairs` differ only by a separator, so a consumer handing the batch record's value to the manifest writer produced a manifest that fails validation **after a run has finished** - and only `corpus`, the one value that matched, would have worked in testing. F2 found it and pinned it with a test that the two are not interchangeable; the better fix is that there is nothing to interchange.*\n\n*3. `mixed` is REMOVED. No requirement describes a mixed signal source: R-02.27 makes a curriculum **chained runs**, each with one source - \"the stop condition of one run triggers the start of another with a different signal source\" - and the word \"mixed\" appears in BRD-02 only about pack parts (R-02.40). It was my invention, and the dangerous kind: an escape hatch letting a writer record \"mixed\" instead of naming the source, which is exactly the false provenance claim R-02.40 forbids elsewhere.*",
+          "enum": [
+            "corpus",
+            "self-generation",
+            "preference-pairs",
+            "reward"
+          ],
+          "type": "string"
+        },
+        "verdicts": {
+          "additionalProperties": false,
+          "description": "How the batch's candidates were judged. THREE counts, not two: 'undecided' is a real outcome of the human-review selector, which is asynchronous. A two-field tally would force every pending candidate to be miscounted as accepted or rejected, and no consumer may construct a path from undecided to admitted.",
+          "properties": {
+            "accept": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "reject": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "undecided": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "accept",
+            "reject",
+            "undecided"
+          ],
+          "title": "VerdictTally",
+          "type": "object"
+        }
+      },
+      "required": [
+        "source",
+        "prompt_ids",
+        "parts",
+        "verdicts",
+        "selection_health",
+        "selector_config_sha256",
+        "grader_config_sha256",
+        "batch_sha256"
+      ],
+      "title": "BatchRecordV1",
+      "type": "object"
+    },
+    "ContractReference": {
+      "additionalProperties": false,
+      "description": "miDataworks' contract form for a dataset part: {type, name, version} (BRD-03 R-03.47). This is THEIR shape and is not restated or extended here - miForge prefixes its own pack identity for DISPLAY only ('<pack>/<type>/<name>@<version>'), which is a presentation layer and never a stored identity. Conflating the two layers is how a cross-repo handoff was once recorded for something neither side had agreed to build.",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "name",
+        "version"
+      ],
+      "title": "ContractReference",
+      "type": "object"
+    },
+    "ExternalProvenance": {
+      "additionalProperties": false,
+      "description": "A part sourced from outside the suite, carrying its own provenance (R-02.40). Required when a part has no contract reference: a part with neither is refused, because an unattributed training input makes the run unreproducible and nothing downstream can say where a behaviour came from.",
+      "properties": {
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "licence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "source": {
+          "description": "A URL, a dataset identifier, or a human description.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "content_sha256",
+        "retrieved_at"
+      ],
+      "title": "ExternalProvenance",
+      "type": "object"
+    },
+    "PartReference": {
+      "additionalProperties": false,
+      "description": "One part a batch drew from, identified EITHER by miDataworks contract reference OR by external provenance - exactly one of the two, which the oneOf below ENFORCES. This element shape is the seam two features each deferred to the other: one named it an open question and the other refuses rather than guess a spelling, so the silence left an adapter writer unbuildable. It is settled here because it is a gate contract. The oneOf was added 2026-10-14: until then this description claimed 'exactly one' while the schema enforced NEITHER half - an element naming no part at all validated clean, and so did one naming two. Found by F8, which had implemented the refusal in code and checked the contract rather than trusting its own description. That is the signature defect of this project - a normative document asserting a constraint nothing enforces - and it was in the contract written to settle the seam. The two 'default: null' annotations below are per-field and must not be read as a constructible pair: an element with both null is refused here.",
+      "oneOf": [
+        {
+          "description": "A suite part: the miDataworks contract reference is present and there is no external provenance.",
+          "properties": {
+            "contract_reference": {
+              "type": "object"
+            },
+            "external": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "contract_reference"
+          ]
+        },
+        {
+          "description": "An external part (R-02.40): its own provenance is present and it borrows no contract reference.",
+          "properties": {
+            "contract_reference": {
+              "type": "null"
+            },
+            "external": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "external"
+          ]
+        }
+      ],
+      "properties": {
+        "contract_reference": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "miDataworks' contract form for a dataset part: {type, name, version} (BRD-03 R-03.47). This is THEIR shape and is not restated or extended here - miForge prefixes its own pack identity for DISPLAY only ('<pack>/<type>/<name>@<version>'), which is a presentation layer and never a stored identity. Conflating the two layers is how a cross-repo handoff was once recorded for something neither side had agreed to build.",
+              "properties": {
+                "name": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "version": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "name",
+                "version"
+              ],
+              "title": "ContractReference",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "external": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "A part sourced from outside the suite, carrying its own provenance (R-02.40). Required when a part has no contract reference: a part with neither is refused, because an unattributed training input makes the run unreproducible and nothing downstream can say where a behaviour came from.",
+              "properties": {
+                "content_sha256": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "licence": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "retrieved_at": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "source": {
+                  "description": "A URL, a dataset identifier, or a human description.",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "content_sha256",
+                "retrieved_at"
+              ],
+              "title": "ExternalProvenance",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "kind": {
+          "description": "Which slot of the run this part filled.",
+          "enum": [
+            "prompt_set",
+            "corpus",
+            "preference_pairs",
+            "test_set",
+            "retention_set",
+            "selector_config",
+            "grader_config"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "contract_reference",
+        "external"
+      ],
+      "title": "PartReference",
+      "type": "object"
+    },
+    "SelectionHealth": {
+      "additionalProperties": false,
+      "description": "Whether selection is still producing signal. A selector that rejects everything and a selector that accepts everything both yield a run that trains on nothing useful while every step looks healthy - so the acceptance rate is recorded per batch rather than inferred later from a log nobody reads.",
+      "properties": {
+        "acceptance_rate": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "candidates_admitted": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "candidates_generated": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exhausted": {
+          "description": "True when the prompt set ran out before the batch was filled.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidates_generated",
+        "candidates_admitted",
+        "acceptance_rate",
+        "exhausted"
+      ],
+      "title": "SelectionHealth",
+      "type": "object"
+    },
+    "VerdictTally": {
+      "additionalProperties": false,
+      "description": "How the batch's candidates were judged. THREE counts, not two: 'undecided' is a real outcome of the human-review selector, which is asynchronous. A two-field tally would force every pending candidate to be miscounted as accepted or rejected, and no consumer may construct a path from undecided to admitted.",
+      "properties": {
+        "accept": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reject": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "undecided": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "accept",
+        "reject",
+        "undecided"
+      ],
+      "title": "VerdictTally",
+      "type": "object"
+    }
+  },
+  "$id": "batch-record-v1.json",
+  "$ref": "#/$defs/BatchRecordV1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,0 +1,30 @@
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    # MIRROR ONLY — releases publish from the public repo, as in miStudio and
+    # miLLM. The sync forwards each v* tag onto the orphan snapshot, and a
+    # PAT-authenticated push does fire workflows there.
+    if: github.repository == 'hitsainet/miForge' || github.repository == 'hitsainet/miforge'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          make_latest: true

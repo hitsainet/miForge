@@ -1,0 +1,67 @@
+{
+  "verdict": "fits",
+  "estimate": {
+    "run_type": "change",
+    "param_count": 139584,
+    "basis": "weights",
+    "weights_gib": 0.0,
+    "gradients_gib": 0.0,
+    "fp32_master_gib": 0.0,
+    "optimizer_states_gib": 0.0,
+    "activations_gib_low": 0.0,
+    "activations_gib_high": 0.0,
+    "total_gib_low": 0.0,
+    "total_gib_high": 0.0
+  },
+  "estimate_bytes": 2093760,
+  "estimate_low_bytes": 1619174,
+  "terms": [
+    {
+      "name": "Model weights",
+      "bytes": 279168
+    },
+    {
+      "name": "Gradients",
+      "bytes": 279168
+    },
+    {
+      "name": "32-bit master copy",
+      "bytes": 558336
+    },
+    {
+      "name": "Optimizer states",
+      "bytes": 279168
+    },
+    {
+      "name": "Activations (upper end)",
+      "bytes": 697920
+    }
+  ],
+  "source": {
+    "kind": "directory",
+    "param_count": 139584,
+    "from_config": false,
+    "path": "/data/checkpoints/bases/tiny"
+  },
+  "cards": [
+    {
+      "uuid": "GPU-247aa582-0d1b-e161-8156-983ed1fefc57",
+      "name": "Card 0",
+      "free_bytes": 1048576,
+      "verdict": "exceeds"
+    },
+    {
+      "uuid": "GPU-f47ba814-49a2-603f-3595-275284140251",
+      "name": "Card 1",
+      "free_bytes": 25165824000,
+      "verdict": "fits"
+    }
+  ],
+  "free_bytes": 25165824000,
+  "free_gib": 23.438,
+  "claimable_bytes": 22649241600,
+  "claimable_gib": 21.094,
+  "safety_fraction": 0.9,
+  "gpu_uuid": "GPU-f47ba814-49a2-603f-3595-275284140251",
+  "gpu_name": "Card 1"
+}

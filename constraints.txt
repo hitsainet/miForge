@@ -1,0 +1,155 @@
+# miForge's COMPLETE dependency lock: every distribution the backend image, CI and a dev venv
+# install, pinned exactly at the LATEST release (operator rule 2026-10-21; suite baseline
+# `miSuite/0xcc/dependency_baseline_2026-10-21.md`; every exception and its cause is in
+# `0xcc/reviews/deps_sync_2026-10-21.md`).
+#
+# `pyproject.toml` pins every DIRECT dependency with `==`; this file pins the TRANSITIVE ones
+# too, because a direct pin alone let the image (PyPI) and CI (the PyTorch CPU index) resolve
+# torch's own dependencies differently - filelock, fsspec, networkx, numpy (recorded in
+# `0xcc/reviews/python_313_2026-10-21.md`). Both install with `-c constraints.txt`:
+#   backend/Dockerfile:   pip install -c constraints.txt "torch==${TORCH_VERSION}" ".[bnb]"
+#   backend-tests.yml:    pip install --no-deps torch==<pin> --index-url .../whl/cpu
+#                         pip install -c constraints.txt -e ".[dev]"
+# A constraint only CONSTRAINS: lines for packages an install does not need (the nvidia-* CUDA
+# runtime in CI, the dev tools in the image) install nothing.
+#
+# `backend/tests/unit/test_dependencies_are_locked.py` fails when a direct dependency is
+# unpinned, when this file disagrees with `pyproject.toml`, when an install path skips this
+# file, or when the running environment holds a distribution this file does not pin (or pins
+# differently) - so the image and CI cannot install different versions silently.
+#
+# Regenerate (Python 3.13, the image's platform; bump a version by editing it here and in
+# pyproject.toml, then re-run so the transitive set follows):
+#   uv pip compile pyproject.toml --extra bnb --extra dev --python-version 3.13 \
+#     --python-platform x86_64-manylinux_2_28 --only-binary :all: --upgrade \
+#     --no-annotate --no-header -o constraints.txt   (then restore this header)
+# `--upgrade` takes the latest release of everything; drop it to change one pin only.
+accelerate==1.15.0
+alembic==1.20.0
+amqp==5.4.1
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+ast-serialize==0.13.1
+attrs==26.1.0
+bidict==0.24.1
+billiard==4.3.1
+bitsandbytes==0.50.2
+black==26.10.1
+celery==5.6.3
+certifi==2026.10.19
+cffi==2.1.1
+click==8.5.0
+click-didyoumean==0.3.1
+click-plugins==1.1.1.2
+click-repl==0.4.1
+cryptography==50.0.2
+cuda-bindings==13.4.4
+cuda-pathfinder==1.8.3
+cuda-toolkit==13.0.3.0
+execnet==2.1.2
+fastapi==0.159.1
+filelock==4.2.4
+fsspec==2026.9.0
+h11==0.16.0
+hf-xet==1.7.0
+httpcore==1.0.9
+httpcore2==2.16.0
+httptools==0.9.0
+httpx==0.28.1
+httpx2==2.16.0
+huggingface-hub==2.2.0
+idna==3.20
+iniconfig==2.3.1
+jinja2==3.1.6
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+kombu==5.6.2
+librt==0.16.0
+mako==1.4.3
+markdown-it-py==4.2.0
+markupsafe==3.0.4
+mcp==2.3.0
+mcp-types==2.3.0
+mdurl==0.1.2
+mpmath==1.3.0
+mypy==2.4.0
+mypy-extensions==1.1.0
+networkx==3.7
+numpy==2.5.4
+nvidia-cublas==13.1.1.3
+nvidia-cuda-cupti==13.0.85
+nvidia-cuda-nvrtc==13.0.88
+nvidia-cuda-runtime==13.0.96
+nvidia-cudnn-cu13==9.24.0.43
+nvidia-cufft==12.0.0.61
+nvidia-cufile==1.15.1.6
+nvidia-curand==10.4.0.35
+nvidia-cusolver==12.0.4.66
+nvidia-cusparse==12.6.3.3
+nvidia-cusparselt-cu13==0.8.1
+nvidia-nccl-cu13==2.30.7
+nvidia-nvjitlink==13.4.92
+nvidia-nvshmem-cu13==3.4.5
+nvidia-nvtx==13.0.85
+opentelemetry-api==1.45.1
+packaging==26.3
+pathspec==1.1.1
+peft==0.21.2
+platformdirs==4.13.5
+pluggy==1.7.0
+prompt-toolkit==3.0.53
+psutil==7.2.2
+psycopg==3.3.6
+psycopg-binary==3.3.6
+pyarrow==26.0.0
+pycparser==3.11
+pydantic==2.14.1
+pydantic-core==2.50.1
+pydantic-settings==2.16.1
+pygments==2.21.0
+pyjwt==2.15.1
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-xdist==3.8.0
+python-dateutil==3.0.0
+python-dotenv==1.2.4
+python-engineio==4.14.0
+python-multipart==0.0.32
+python-socketio==5.17.0
+pytokens==0.4.1
+pyyaml==6.0.3
+redis==8.1.0
+referencing==0.37.0
+regex==2026.9.29
+rich==15.0.0
+rpds-py==2026.9.1
+ruff==0.17.1
+safetensors==0.8.0
+setuptools==84.2.1
+shellingham==1.5.4
+simple-websocket==1.1.0
+six==1.17.0
+sqlalchemy==2.1.6
+sse-starlette==3.5.0
+starlette==1.9.0
+sympy==1.14.0
+tokenizers==0.23.3
+torch==2.14.1
+tqdm==4.70.1
+transformers==5.20.2
+triton==3.8.0
+truststore==0.10.5
+typer==0.27.3
+types-jsonschema==4.26.0.20261006
+typing-extensions==4.16.0
+typing-inspection==0.4.4
+tzdata==2026.5
+tzlocal==5.4.4
+uvicorn==0.54.0
+uvloop==0.23.0
+vine==5.1.0
+watchfiles==1.3.0
+wcwidth==0.9.3
+websockets==17.3
+wsproto==1.3.2
