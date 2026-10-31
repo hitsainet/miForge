@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "useDefineForClassFields": true,
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"],
+
+    /* ADR-011: TypeScript strict. These are the flags "strict" does not turn on and
+       which catch the two mistakes this project keeps making in Python as well: a value
+       read from a map that may not be there, and a field consumed without being
+       declared. `noUncheckedIndexedAccess` is what makes the mockup's `map[state]`
+       crash (handoff 6, "StatePill destructures map[state] with no fallback") a
+       compile error rather than a runtime one. */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": false,
+    "noEmit": true,
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    /* No `baseUrl`: TypeScript 6 deprecates it (TS5101) and 7 removes it. `paths` entries
+       resolve relative to this file without it, so the alias is unchanged. */
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src", "tests"]
+}

@@ -1,0 +1,505 @@
+{
+  "$defs": {
+    "PackDefinitionV1": {
+      "additionalProperties": false,
+      "description": "A named, versioned composition of the parts one domain's runs need (BRD-02 R-02.38, R-02.39, R-02.40).\n\nSIX SLOTS, and those six are exactly what defines a run: a prompt set, optionally a corpus, optionally preference pairs, a selector and/or grader configuration, a test set, and a retention set with its floor.\n\nTHIS IS AN ON-DISK FILE, 'pack.json', beside the pack's directory - not a database-only record. ADR-003 puts the pack registry in PostgreSQL while ADR-004 makes the filesystem authoritative for produced artifacts; packs were the ONE artifact with no on-disk manifest, so losing the database lost every unexported pack and `reindex` could not rebuild them. A pack is references, not data - a few kilobytes - so paying one small writer keeps ADR-004 universal instead of carving out an exception every future reader has to remember.\n\n'Pack' was coined in the UI mockup, not in any requirement, and was twice recorded as a cross-repo handoff neither side had agreed to build. Settled 2026-10-12: MIFORGE ASSEMBLES PACKS from miDataworks parts, and pack authoring, the registry and domain onboarding are miForge's.",
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "definition_sha256": {
+          "description": "Canonical hash of this document minus this field.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "NULLABLE BUT REQUIRED. Null is an assertion that the pack is not domain-scoped; an ABSENT key is an omission. The two are different facts and collapsing them is the defect the nullable-domain decision exists to prevent."
+        },
+        "name": {
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "type": "string"
+        },
+        "slots": {
+          "additionalProperties": false,
+          "properties": {
+            "corpus": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "One part slot. Holds a REFERENCE, never a copy (R-02.35, R-02.38) - a pack that copied its parts would duplicate miDataworks' data and immediately diverge from it.\n\nExactly one of contract_reference or external must be present; neither is refused, because an unattributed input makes the run unreproducible.",
+                  "properties": {
+                    "contract_reference": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ContractReference"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "external": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ExternalProvenance"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "floor": {
+                      "anyOf": [
+                        {
+                          "maximum": 1.0,
+                          "minimum": 0.0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The retention floor. MIFORGE'S, not miDataworks': they own the set, this project owns what counts as an unacceptable regression on it."
+                    }
+                  },
+                  "required": [
+                    "contract_reference",
+                    "external"
+                  ],
+                  "title": "PackSlot",
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "grader_config": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "One part slot. Holds a REFERENCE, never a copy (R-02.35, R-02.38) - a pack that copied its parts would duplicate miDataworks' data and immediately diverge from it.\n\nExactly one of contract_reference or external must be present; neither is refused, because an unattributed input makes the run unreproducible.",
+                  "properties": {
+                    "contract_reference": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ContractReference"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "external": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ExternalProvenance"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "floor": {
+                      "anyOf": [
+                        {
+                          "maximum": 1.0,
+                          "minimum": 0.0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The retention floor. MIFORGE'S, not miDataworks': they own the set, this project owns what counts as an unacceptable regression on it."
+                    }
+                  },
+                  "required": [
+                    "contract_reference",
+                    "external"
+                  ],
+                  "title": "PackSlot",
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "preference_pairs": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "One part slot. Holds a REFERENCE, never a copy (R-02.35, R-02.38) - a pack that copied its parts would duplicate miDataworks' data and immediately diverge from it.\n\nExactly one of contract_reference or external must be present; neither is refused, because an unattributed input makes the run unreproducible.",
+                  "properties": {
+                    "contract_reference": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ContractReference"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "external": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ExternalProvenance"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "floor": {
+                      "anyOf": [
+                        {
+                          "maximum": 1.0,
+                          "minimum": 0.0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The retention floor. MIFORGE'S, not miDataworks': they own the set, this project owns what counts as an unacceptable regression on it."
+                    }
+                  },
+                  "required": [
+                    "contract_reference",
+                    "external"
+                  ],
+                  "title": "PackSlot",
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "prompt_set": {
+              "additionalProperties": false,
+              "description": "One part slot. Holds a REFERENCE, never a copy (R-02.35, R-02.38) - a pack that copied its parts would duplicate miDataworks' data and immediately diverge from it.\n\nExactly one of contract_reference or external must be present; neither is refused, because an unattributed input makes the run unreproducible.",
+              "properties": {
+                "contract_reference": {
+                  "anyOf": [
+                    {
+                      "$ref": "batch-record-v1.json#/$defs/ContractReference"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "external": {
+                  "anyOf": [
+                    {
+                      "$ref": "batch-record-v1.json#/$defs/ExternalProvenance"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "floor": {
+                  "anyOf": [
+                    {
+                      "maximum": 1.0,
+                      "minimum": 0.0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The retention floor. MIFORGE'S, not miDataworks': they own the set, this project owns what counts as an unacceptable regression on it."
+                }
+              },
+              "required": [
+                "contract_reference",
+                "external"
+              ],
+              "title": "PackSlot",
+              "type": "object"
+            },
+            "retention_set": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "One part slot. Holds a REFERENCE, never a copy (R-02.35, R-02.38) - a pack that copied its parts would duplicate miDataworks' data and immediately diverge from it.\n\nExactly one of contract_reference or external must be present; neither is refused, because an unattributed input makes the run unreproducible.",
+                  "properties": {
+                    "contract_reference": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ContractReference"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "external": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ExternalProvenance"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "floor": {
+                      "anyOf": [
+                        {
+                          "maximum": 1.0,
+                          "minimum": 0.0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The retention floor. MIFORGE'S, not miDataworks': they own the set, this project owns what counts as an unacceptable regression on it."
+                    }
+                  },
+                  "required": [
+                    "contract_reference",
+                    "external"
+                  ],
+                  "title": "PackSlot",
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "selector_config": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "One part slot. Holds a REFERENCE, never a copy (R-02.35, R-02.38) - a pack that copied its parts would duplicate miDataworks' data and immediately diverge from it.\n\nExactly one of contract_reference or external must be present; neither is refused, because an unattributed input makes the run unreproducible.",
+                  "properties": {
+                    "contract_reference": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ContractReference"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "external": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ExternalProvenance"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "floor": {
+                      "anyOf": [
+                        {
+                          "maximum": 1.0,
+                          "minimum": 0.0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The retention floor. MIFORGE'S, not miDataworks': they own the set, this project owns what counts as an unacceptable regression on it."
+                    }
+                  },
+                  "required": [
+                    "contract_reference",
+                    "external"
+                  ],
+                  "title": "PackSlot",
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "test_set": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "description": "One part slot. Holds a REFERENCE, never a copy (R-02.35, R-02.38) - a pack that copied its parts would duplicate miDataworks' data and immediately diverge from it.\n\nExactly one of contract_reference or external must be present; neither is refused, because an unattributed input makes the run unreproducible.",
+                  "properties": {
+                    "contract_reference": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ContractReference"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "external": {
+                      "anyOf": [
+                        {
+                          "$ref": "batch-record-v1.json#/$defs/ExternalProvenance"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "floor": {
+                      "anyOf": [
+                        {
+                          "maximum": 1.0,
+                          "minimum": 0.0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The retention floor. MIFORGE'S, not miDataworks': they own the set, this project owns what counts as an unacceptable regression on it."
+                    }
+                  },
+                  "required": [
+                    "contract_reference",
+                    "external"
+                  ],
+                  "title": "PackSlot",
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "prompt_set",
+            "corpus",
+            "preference_pairs",
+            "selector_config",
+            "grader_config",
+            "test_set",
+            "retention_set"
+          ],
+          "type": "object"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "name",
+        "version",
+        "domain",
+        "slots",
+        "created_at",
+        "definition_sha256"
+      ],
+      "title": "PackDefinitionV1",
+      "type": "object"
+    },
+    "PackSlot": {
+      "additionalProperties": false,
+      "description": "One part slot. Holds a REFERENCE, never a copy (R-02.35, R-02.38) - a pack that copied its parts would duplicate miDataworks' data and immediately diverge from it.\n\nExactly one of contract_reference or external must be present; neither is refused, because an unattributed input makes the run unreproducible.",
+      "properties": {
+        "contract_reference": {
+          "anyOf": [
+            {
+              "$ref": "batch-record-v1.json#/$defs/ContractReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "external": {
+          "anyOf": [
+            {
+              "$ref": "batch-record-v1.json#/$defs/ExternalProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "floor": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The retention floor. MIFORGE'S, not miDataworks': they own the set, this project owns what counts as an unacceptable regression on it."
+        }
+      },
+      "required": [
+        "contract_reference",
+        "external"
+      ],
+      "title": "PackSlot",
+      "type": "object"
+    }
+  },
+  "$id": "pack-definition-v1.json",
+  "$ref": "#/$defs/PackDefinitionV1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

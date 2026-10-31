@@ -1,0 +1,251 @@
+# miForge's Ingress — THE FILE WHOSE ABSENCE WAS THE 404 (2026-10-14).
+#
+# Until this file existed, `gitops/pilot/` declared a `miforge-frontend` Service of the
+# default type **ClusterIP** and nothing else. A ClusterIP is reachable only from inside
+# the cluster, so every request arriving at the ingress-nginx controller for miForge
+# matched **no rule** and was answered by the controller's own default backend — which
+# serves a bare `404 Not Found`. That is the operator's symptom exactly: "I get to nginx
+# and receive a 404." Nothing was misconfigured; the route did not exist.
+#
+# `frontend/nginx.conf` said so in its own header before this file was written:
+# *"miForge HAS NO INGRESS — a hostname and TLS are operator decisions and foundation
+# task 8.5 does not ask for one."* The gap was recorded and not closed.
+#
+# ── WRITTEN AGAINST THE THREE WORKING DEPLOYMENTS, NOT AGAINST ONE ────────────────
+# miLLM (`k8s/base/ingress.yaml`), miStudio (same path) and miDataworks (same path) are
+# all reached from outside through this same controller and the same Cloudflared tunnel,
+# so they are the specification and not merely three samples. What all three agree on:
+#
+#   * `ingressClassName: public` — microk8s' bundled ingress-nginx. All three. A wrong
+#     class is never picked up by any controller, which is indistinguishable from having
+#     no Ingress at all, i.e. the same 404 this file fixes.
+#   * TWO Ingress objects, not one: the HTTP rules, and a SEPARATE object for the
+#     WebSocket path carrying `websocket-services`. All three do this and all three
+#     carry the same warning, which is honoured below rather than rediscovered.
+#   * TWO hostnames per rule set, `.local` for the LAN and `.net` for the tunnel.
+#
+# ── ⚠ THE HOSTNAMES, WHICH ARE THE SECOND HALF OF THE 404 ────────────────────────
+# A host-based rule only matches when the `Host:` header that *arrives* equals it. A
+# Cloudflared tunnel presents the PUBLIC hostname, so an Ingress carrying only
+# `k8s-miforge.hitsai.local` would still 404 for a tunnelled request — a correct
+# Ingress and an unchanged symptom, which is the worst outcome available here.
+#
+# miStudio's README states the convention outright: the k8s path has *"ingress rules for
+# both local (`hitsai.local`) and tunneled (`hitsai.net`) access."* So BOTH are declared.
+# A third spelling is declared too, `miforge.hitsai.net`, because **miDataworks carries
+# exactly that third form** (`midataworks.hitsai.net`, beside its two `k8s-` names) and a
+# tunnel route configured without the `k8s-` prefix is therefore a shape this cluster
+# already uses. Three cheap rules beat one more round of 404.
+#
+# ⚠ A RULE WITH NO `host:` WAS CONSIDERED AND DELIBERATELY NOT WRITTEN. It would match
+# whatever arrives and so could not 404 — but a host-less rule becomes the DEFAULT
+# SERVER for the whole `public` class, so miForge would then answer for every hostname
+# no other Ingress claims, including anything intended for miLLM or miStudio whose own
+# rule ever stopped matching. That converts miForge's outage into a suite-wide
+# mis-routing. None of the three siblings does it. If the tunnel turns out to present a
+# fourth name, ADD THAT NAME HERE — do not reach for the catch-all.
+#
+# To confirm what the tunnel actually sends, from the cluster (no manifest can answer it,
+# since the tunnel config lives in neither this repository nor any sibling's):
+#
+#     kubectl -n <cloudflared ns> get cm,deploy -o yaml | grep -A3 hostname
+#     kubectl -n miforge describe ingress miforge-ingress
+#     kubectl logs -n ingress deploy/nginx-ingress-microk8s-controller | grep miforge
+#
+# ── ⚠ ONE `/api` RULE COVERS THE WHOLE HTTP SURFACE, AND THAT IS CHECKED ─────────
+# miLLM's Ingress carries five backend rules (`/api`, `/v1`, `/docs`, `/redoc`,
+# `/openapi.json`) because its FastAPI app serves those paths at the root. miForge's does
+# NOT, and copying miLLM's list would have added four rules that route nothing.
+# `backend/src/api/app.py` was read rather than assumed:
+#
+#     openapi_url="/api/openapi.json"      docs_url="/api/docs"      redoc_url=None
+#     app.include_router(health_router, prefix="/api")
+#     app.include_router(api_v1_router)          # /api/v1/...
+#
+# Every HTTP path the backend serves is under `/api` — including health at `/api/health`,
+# which ADR-013 puts OUTSIDE the version prefix, and which the `/api` prefix therefore
+# still reaches. There is no `/v1` surface here: that is miLLM's OpenAI-compatible API.
+#
+# ── WHY THE FRONTEND'S OWN nginx PROXY IS **KEPT**, AGAINST ITS OWN NOTE ─────────
+# `frontend/nginx.conf` says *"MIGRATING IS A DELETION, NOT A REWRITE: add the ingress,
+# then delete the two `location` blocks below."* That is not done, deliberately:
+#
+#   * `docker compose` became a SUPPORTED DEPLOYMENT PATH on 2026-10-14 (see
+#     `backend/tests/unit/test_compose_is_a_deploy_path.py`), and there is no Ingress in
+#     Compose. Deleting the proxy would break a path verified working that day.
+#   * `kubectl port-forward svc/miforge-frontend 8080:80` is the only way in while this
+#     Ingress is being brought up, and it goes through that proxy.
+#   * In the cluster the proxy is simply unused: `/api` and `/socket.io` are more specific
+#     than `/`, so the controller routes them straight to `miforge-backend` and they never
+#     reach the frontend pod. Keeping it costs nothing and removes a single point of
+#     failure rather than adding one.
+#
+# ── IT IS IN `kustomization.yaml`, WHICH IS NOT OPTIONAL ─────────────────────────
+# ArgoCD builds this directory with Kustomize, and Kustomize applies ONLY the files named
+# in `resources:`. A manifest sitting beside the others but unlisted is never applied —
+# and the resulting symptom is a 404, i.e. exactly the bug being fixed, with the fix
+# apparently in place. `storage.yaml` is the one deliberate omission and says so.
+# All three siblings list their `ingress.yaml`; so does this one.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: miforge-ingress
+  namespace: miforge
+  annotations:
+    # A pack import or an external-part ingestion can post a large body; "0" is
+    # unlimited, which defers the limit to the application so it can refuse with a
+    # reason (ADR-013) rather than letting nginx answer a bare 413. All three siblings
+    # set "0".
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    # A training run is hours long and the run view polls for all of it when the socket
+    # drops (ADR-013's fallback). The default 60 s read timeout would cut a long poll,
+    # a generation-bound test pass or a 2.4 GB save. `frontend/nginx.conf` sets 600 s on
+    # its own proxy for the same reason; the controller must not be the tighter of the
+    # two or its timeout is the one that bites.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "3600"
+spec:
+  ingressClassName: public
+  rules:
+    # The LAN name, as used from inside hitsai.local.
+    - host: k8s-miforge.hitsai.local
+      http:
+        paths:
+          # ⚠ `/api` BEFORE `/`. ingress-nginx matches the LONGEST prefix regardless of
+          # order, so this is for the reader rather than the controller — but every
+          # sibling writes it this way and a reordering that looked meaningful would
+          # invite someone to "fix" it.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                # Port 80 on the Service, 8080 in the container: the image is
+                # nginx-unprivileged (uid 101) and cannot bind a privileged port. The
+                # Service's `targetPort: 8080` bridges them (`frontend.yaml`).
+                name: miforge-frontend
+                port:
+                  number: 80
+    # The tunnelled name. miStudio's README: "ingress rules for both local
+    # (hitsai.local) and tunneled (hitsai.net) access."
+    - host: k8s-miforge.hitsai.net
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-frontend
+                port:
+                  number: 80
+    # The third spelling, because miDataworks carries `midataworks.hitsai.net` beside its
+    # two `k8s-` names — so a tunnel route without the prefix is a shape this cluster
+    # already serves.
+    - host: miforge.hitsai.net
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-frontend
+                port:
+                  number: 80
+---
+# Socket.IO, in its own Ingress. `api/sockets.py` mounts it with
+# `socketio_path="socket.io"`, so the live progress channel is at `/socket.io/` — read
+# from that module, not assumed.
+#
+# ⚠ SEPARATE OBJECT, AND NOT A STYLE CHOICE. All three siblings split the WebSocket path
+# out and all three carry the same hard-won warning, quoted from miLLM's copy:
+#
+#     "Do NOT add configuration-snippet with Upgrade headers — it causes header
+#      duplication."
+#
+# `websocket-services` makes the controller handle the Upgrade/Connection handshake
+# itself; adding the headers by hand duplicates them and the upgrade fails.
+#
+# ⚠ WITHOUT THIS OBJECT THE LIVE CHANNEL WOULD WORK BY ACCIDENT, AND THE TIMEOUT WOULD
+# CUT IT. Two separate things, and only the second is certain:
+#
+#   * `/socket.io` would fall under the `/` rule to the frontend pod, whose own nginx
+#     proxies it AND sets the three upgrade headers — so the handshake would very likely
+#     still succeed. **Not asserted as a failure**, because it was not observed: this is
+#     reasoning about a path with no cluster to test it on. What it IS, certainly, is a
+#     live capability resting on a proxy whose own header is a note about deleting it
+#     (*"MIGRATING IS A DELETION… then delete the two `location` blocks below"*). The
+#     deletion would take the run view's live updates with it and nothing would say so.
+#   * **The timeout is the definite half.** Under the `/` rule the socket would inherit
+#     the HTTP Ingress's `proxy-read-timeout: 3600`, so a stream would be cut at one hour
+#     — well inside a training run. This object's 86400 is what a run-length stream needs,
+#     and it is why all three siblings carry a second object rather than one.
+#
+# Routing it explicitly makes the live channel a declared capability instead of a side
+# effect, which is the point either way.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: miforge-websocket-ingress
+  namespace: miforge
+  annotations:
+    nginx.ingress.kubernetes.io/websocket-services: "miforge-backend"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    # A run streams for the whole run. 86400 s matches miLLM's and miDataworks' WebSocket
+    # ingresses and `frontend/nginx.conf`'s own `/socket.io/` block.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "3600"
+spec:
+  ingressClassName: public
+  rules:
+    - host: k8s-miforge.hitsai.local
+      http:
+        paths:
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-backend
+                port:
+                  number: 8000
+    - host: k8s-miforge.hitsai.net
+      http:
+        paths:
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-backend
+                port:
+                  number: 8000
+    - host: miforge.hitsai.net
+      http:
+        paths:
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-backend
+                port:
+                  number: 8000

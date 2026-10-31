@@ -1,0 +1,58 @@
+name: Manual Build
+
+# The manual's build check: a broken page fails the push or pull request that broke it, on the
+# private repo, BEFORE anything reaches the mirror and its Pages deploy.
+#
+# `npm run build` is three checks in one command (manual/package.json):
+#   prebuild   scripts/sync-mcp-contract.mjs  - the MCP tool page from docs/mcp-contract.md;
+#   build      docusaurus build               - an MDX parse error, a broken link, a broken
+#                                               anchor or a broken Markdown link fails it
+#                                               (docusaurus.config.ts sets all three to throw);
+#   postbuild  scripts/check-published.mjs    - no internal host, private address, token or
+#                                               planning reference in any built page.
+# Before the build, `npm test` runs scripts/check-published.test.mjs: the postbuild scanner
+# against tiny fixture sites, so a scanner that silently scans less (an end tag it does not
+# recognise, CodeQL js/bad-tag-filter) fails here rather than passing every build.
+# The source-side rules (the file allow-list, and a `|` inside a code span in a table row,
+# which builds "successfully" into a broken table) run in Backend Tests:
+# backend/tests/unit/test_manual_publish_allowlist.py.
+#
+# NO `paths:` FILTER, for the reason backend-tests.yml gives: a filtered trigger produces no
+# run for a push it does not match, and "no run" reads like "passed". The build takes about a
+# minute.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: manual
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22 LTS, as deploy-manual.yml and the frontend use.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: manual/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test the publish check
+        run: npm test
+
+      - name: Build the manual (contract page, link check, publish check)
+        run: npm run build

@@ -1,0 +1,210 @@
+{
+  "approvals": [
+    {
+      "action": "config_write",
+      "approval_id": "apr_fixture_1",
+      "batch_id": null,
+      "created_at": "2026-10-19T12:00:00+00:00",
+      "decided_at": null,
+      "decided_by": null,
+      "error": null,
+      "expires_at": "2026-10-20T12:00:00+00:00",
+      "payload": {
+        "body": {
+          "reason": null,
+          "value": true
+        },
+        "key": "checkpoint_lifecycle_enabled"
+      },
+      "reason": null,
+      "request_digest": "sha256:3f0b4ea55861969bd059f32f93eadd24d2f6a951cafcaecf72148c8dff86ce2c",
+      "requested_by": "agent:forge-mcp",
+      "result": null,
+      "status": "pending",
+      "summary": {
+        "key": "checkpoint_lifecycle_enabled",
+        "label": "Prune old checkpoints",
+        "new": true,
+        "old": false,
+        "reason": null,
+        "route": "PUT /api/v1/settings/{key}"
+      }
+    },
+    {
+      "action": "delete",
+      "approval_id": "apr_fixture_2",
+      "batch_id": null,
+      "created_at": "2026-10-19T12:00:00+00:00",
+      "decided_at": null,
+      "decided_by": null,
+      "error": null,
+      "expires_at": "2026-10-20T12:00:00+00:00",
+      "payload": {
+        "draft_id": "draft-fixture"
+      },
+      "reason": null,
+      "request_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "requested_by": "agent:forge-mcp",
+      "result": null,
+      "status": "pending",
+      "summary": {
+        "current_step": 1,
+        "name": "legal-draft",
+        "route": "DELETE /api/v1/pack-drafts/{draft_id}",
+        "target": "pack draft draft-fixture"
+      }
+    },
+    {
+      "action": "gpu_start",
+      "approval_id": "apr_fixture_3",
+      "batch_id": null,
+      "created_at": "2026-10-19T12:00:00+00:00",
+      "decided_at": null,
+      "decided_by": null,
+      "error": null,
+      "expires_at": "2026-10-20T12:00:00+00:00",
+      "payload": {
+        "definition": {
+          "adapter": null,
+          "cadences": {
+            "refresh_every": null,
+            "retention_every": 1,
+            "save_every": null,
+            "test_every": 1
+          },
+          "domain": "legal",
+          "gpu_request": "auto",
+          "model_source": {
+            "mode": "load",
+            "path": "/models/base"
+          },
+          "pack": null,
+          "parts": [
+            {
+              "kind": "corpus",
+              "part_id": "part-corpus"
+            }
+          ],
+          "refresh": null,
+          "retention_floor_override": null,
+          "run_configuration": {
+            "batch_size": 1,
+            "gradient_accumulation": 1,
+            "learning_rate": 1e-05,
+            "optimizer_state_precision": "32bit",
+            "warmup_steps": 0
+          },
+          "run_id": "run-f12",
+          "run_type": "change",
+          "scoring": {},
+          "seed": 7,
+          "signal_source": {
+            "source": "corpus"
+          },
+          "stop_conditions": [
+            {
+              "condition": "step_count",
+              "config": {
+                "total": 40
+              }
+            }
+          ]
+        }
+      },
+      "reason": null,
+      "request_digest": "sha256:6bdb7db8f6547914c80dbc965114c61a72818ed1e08005fb426f3b262e973863",
+      "requested_by": "agent:forge-mcp",
+      "result": null,
+      "status": "pending",
+      "summary": {
+        "gpu_request": "auto",
+        "gpu_uuid": "GPU-00000000-0000-0000-0000-00000000f012",
+        "model": "/models/base",
+        "pack": null,
+        "route": "POST /api/v1/runs/define",
+        "run_id": "run-f12",
+        "run_type": "change",
+        "step_budget": 40
+      }
+    },
+    {
+      "action": "hotupdate_attach",
+      "approval_id": "apr_fixture_4",
+      "batch_id": null,
+      "created_at": "2026-10-19T12:00:00+00:00",
+      "decided_at": null,
+      "decided_by": null,
+      "error": null,
+      "expires_at": "2026-10-20T12:00:00+00:00",
+      "payload": {
+        "definition": {
+          "adapter": null,
+          "cadences": {
+            "refresh_every": null,
+            "retention_every": 1,
+            "save_every": null,
+            "test_every": 1
+          },
+          "domain": "legal",
+          "gpu_request": "auto",
+          "model_source": {
+            "mode": "attach"
+          },
+          "pack": null,
+          "parts": [
+            {
+              "kind": "corpus",
+              "part_id": "part-corpus"
+            }
+          ],
+          "refresh": null,
+          "retention_floor_override": null,
+          "run_configuration": {
+            "batch_size": 1,
+            "gradient_accumulation": 1,
+            "learning_rate": 1e-05,
+            "optimizer_state_precision": "32bit",
+            "warmup_steps": 0
+          },
+          "run_id": "run-attach",
+          "run_type": "change",
+          "scoring": {},
+          "seed": 7,
+          "signal_source": {
+            "source": "corpus"
+          },
+          "stop_conditions": [
+            {
+              "condition": "step_count",
+              "config": {
+                "total": 40
+              }
+            }
+          ]
+        }
+      },
+      "reason": null,
+      "request_digest": "sha256:5507ebaf0074e389d8e81b39b0100da108a8ec9bc4d1e5ea66f1ba38078664fe",
+      "requested_by": "agent:forge-mcp",
+      "result": null,
+      "status": "pending",
+      "summary": {
+        "attach": {
+          "millm_base_url": null,
+          "served_model": null
+        },
+        "gpu_request": "auto",
+        "gpu_uuid": "GPU-00000000-0000-0000-0000-00000000f012",
+        "model": "the model miLLM is serving",
+        "pack": null,
+        "route": "POST /api/v1/runs/define",
+        "run_id": "run-attach",
+        "run_type": "change",
+        "step_budget": 40
+      }
+    }
+  ],
+  "count": 4,
+  "limit": 200,
+  "pending": 4
+}

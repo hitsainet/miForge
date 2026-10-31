@@ -1,0 +1,224 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miforge"
+version = "0.1.0"
+description = "miForge makes weights - creating them from scratch, changing them in place, or adding adapters that compose with them."
+# Python 3.13 (operator decision 2026-10-21, suite memory `python-313-upgrade-decision`;
+# ADR-002 named 3.11 until then). The floor IS the shipped version: `backend/Dockerfile` is
+# `python:3.13-slim` and every job in `backend-tests.yml` runs 3.13, so a floor below it
+# would promise an interpreter nothing tests. No ceiling: nothing installs this package
+# outside the image (the GPU node's host `python3.12` runs none of it), and a ceiling would
+# only have to be moved again. Black/Ruff/MyPy below target the same version.
+requires-python = ">=3.13"
+license = { text = "MIT" }
+
+# ADR-002. The ML stack is a core dependency, not an extra: ADR-023 requires that a
+# developer without a GPU can run everything except a training step, and the CPU wheels
+# satisfy that. Making torch optional would instead make `training/` unimportable in CI,
+# which turns ADR-016's reachability rule into a test that cannot run.
+#
+# EVERY REQUIREMENT IS PINNED EXACTLY AT THE LATEST RELEASE (deps sync 2026-10-21, operator
+# rule: latest unless a technical cause is quoted in `0xcc/reviews/deps_sync_2026-10-21.md`),
+# and `constraints.txt` locks the transitive set the image and CI both install with `-c`.
+# torch, transformers and bitsandbytes follow miLLM's pins, not PyPI's newest: hot-update
+# mode needs identical builds in both pods. `test_dependencies_are_locked.py` refuses a range.
+dependencies = [
+  "fastapi==0.159.1",
+  "uvicorn[standard]==0.54.0",
+  "pydantic==2.14.1",
+  "pydantic-settings==2.16.1",
+  "sqlalchemy==2.1.6",
+  "alembic==1.20.0",
+  "psycopg[binary]==3.3.6",
+  "celery==5.6.3",
+  "redis==8.1.0",
+  "python-socketio==5.17.0",
+  "httpx==0.28.1",
+  "jsonschema==4.26.0",
+  "torch==2.14.1",
+  # ── THE HUGGING FACE STACK IS PINNED EXACTLY (operator directive 2026-10-18) ──────────
+  # "Update ALL of the huggingface software to the latest version." Pinned with `==`, not a
+  # range, so the image (`backend/Dockerfile` installs from this table), CI
+  # (`backend-tests.yml` installs `.[dev]`) and a developer venv resolve the SAME versions.
+  # A range let the dev venv and the image take different releases on different days -
+  # miLLM shipped a transformers API change that passed every local test that way
+  # (suite memory `dev-venv-vs-image-version-drift`).
+  #
+  # Why transformers 5: miLLM serves on transformers 5 and SAVES every checkpoint's
+  # tokenizer with it, writing `"tokenizer_class": "TokenizersBackend"` - a class 4.x does
+  # not have. Under `<5` every F11 resume from a miLLM-written checkpoint died loading the
+  # verify tokenizer (window 4, 2026-10-18). `test_tokenizer_saved_by_transformers5.py`
+  # loads such a directory through the production path.
+  #
+  # Move these TOGETHER and on purpose: transformers 5.20.2 requires
+  # huggingface-hub>=1.31,<3, tokenizers>=0.23.1,<0.24 and safetensors>=0.8.
+  # `test_hf_stack_is_pinned.py` refuses a range creeping back.
+  "transformers==5.20.2",
+  "tokenizers==0.23.3",
+  "safetensors==0.8.0",
+  "peft==0.21.2",
+  "accelerate==1.15.0",
+  "huggingface_hub==2.2.0",
+  # Parquet, and it is NOT optional in practice. F2 imported it lazily and reported it as
+  # owed, refusing by name (`parquet_reader_unavailable`) rather than raising an ImportError
+  # nobody can act on - which was the right call for an agent that does not own this file.
+  # Declared here on 2026-10-14 because Parquet is **the format miDataworks' export service
+  # writes**, so without it the primary input path of miForge's main upstream cannot be read
+  # on a clean clone. That is foundation task 10.1's install, failing on the main path, not a
+  # graceful degradation of an edge case.
+  #
+  # The refusal is KEPT and is still tested: `test_signal_parts_reader.py` now blocks the
+  # import to force it, instead of skipping when pyarrow happens to be present. A conditional
+  # test of a refusal tests nothing on the machine where the dependency is installed.
+  "pyarrow==26.0.0",
+  # Host CPU and memory for the shell's resource strip (core/host_metrics.py). Already in
+  # the image through accelerate; declared because miForge now imports it itself.
+  "psutil==7.2.2",
+  # F12: the MCP server (`backend/src/mcp_server`, its own Deployment). The 2.x line as
+  # miDataworks pins it (`MCPServer`, the transport settings on `streamable_http_app`).
+  "mcp==2.3.0",
+]
+
+[project.optional-dependencies]
+# bitsandbytes provides the 8-bit optimizer states (ADR-002). It is separated because it
+# has no pure-CPU wheel on every platform, and a developer without a card must still be
+# able to install the package and run the suite (ADR-023).
+#
+# ⚠ AN EXTRA SAYS WHO MAY SKIP IT, NOT THAT THE GPU IMAGE MAY. `backend/Dockerfile`
+# installs `.[bnb]`, and until 2026-10-16 it did not - so the deployed trainer could not
+# build its DEFAULT optimizer at all: `optimizer_state_precision` defaults to `8bit`, and
+# `training/optimizer.py` refuses `optimizer_precision_unavailable` rather than downgrading
+# silently, because the recorded identity would otherwise name a precision that was not
+# used. The Dockerfile had read the paragraph above as a reason to leave it out.
+#
+# **Do not promote it to `dependencies` to "fix" that** - that is the half of the defect
+# that breaks the cardless install this extra exists for.
+# `test_backend_image_can_train.py` pins both directions, and it reads the extra's NAME
+# from this table rather than spelling `bnb` a second time, so a rename here cannot
+# silently turn the Dockerfile's `.[bnb]` into a no-op (pip only WARNS on an unknown extra).
+# Pinned exactly with the rest of the Hugging Face stack (see `dependencies`), 2026-10-18.
+bnb = ["bitsandbytes==0.50.2"]
+dev = [
+  "pytest==9.1.1",
+  "pytest-xdist==3.8.0",
+  "pytest-asyncio==1.4.0",
+  # PINNED EXACTLY since the lint gate landed (suite tracker 4.27, 2026-10-16): a gate whose
+  # linter floats turns red on a release that adds a rule, with no commit to blame. Bump on
+  # purpose, in a commit that also clears what the new version reports.
+  "black==26.10.1",
+  "ruff==0.17.1",
+  "mypy==2.4.0",
+  "types-jsonschema==4.26.0.20261006",
+]
+
+[tool.setuptools.packages.find]
+where = ["backend/src"]
+
+[tool.setuptools.package-dir]
+"" = "backend/src"
+
+# --------------------------------------------------------------------------------------
+# pytest - task 1.1
+# --------------------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend/src"]
+asyncio_mode = "auto"
+
+# TWO MARKERS, BOTH DESELECTED BY DEFAULT.
+#
+#   gpu      - needs a real CUDA device (ADR-023). A developer without a card, and CI,
+#              must be able to run everything else.
+#   upstream - needs a sibling application actually RUNNING, not merely configured
+#              (F11's three filings). CI has neither a card nor a serving process, so
+#              without this marker CI tries to run F11's live tests instead of skipping
+#              them cleanly.
+#
+# Registering both HERE rather than in a feature keeps one deselection convention. To
+# include them: `pytest -m gpu` / `pytest -m upstream` / `pytest -m "gpu or upstream"`.
+markers = [
+  "gpu: requires a CUDA device; deselected by default (ADR-023)",
+  "upstream: requires a sibling application running; deselected by default",
+]
+addopts = "-m 'not gpu and not upstream' --strict-markers --strict-config"
+
+# --------------------------------------------------------------------------------------
+# Black / Ruff / MyPy - ADR-018
+# --------------------------------------------------------------------------------------
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["backend/src", "backend/tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "C4", "SIM", "RUF"]
+# ADR-018 forbids a getattr default that always fires; B009/B010 (getattr with a constant)
+# is the lint that catches its cheapest form.
+#
+# SIM300 ("yoda condition") is DISABLED, and this is a correctness decision rather than a
+# style preference. `ruff check --fix` read a SQLAlchemy predicate `RUN_ID == run_id` as a
+# constant on the left and rewrote it to `run_id == RUN_ID` - which still *runs*, because
+# Python falls back to the column's reflected `__eq__`, so the suite stayed green and only
+# MyPy noticed (it typed the result as `bool`). The clauses it rewrote were the terminal-row
+# and GPU-lease guards: the ones whose whole purpose is to close a read-then-write race by
+# living inside the WHERE. **An autofix that rewrites a WHERE clause and leaves the tests
+# green is not something to defend with a hand-held naming convention.** Found by the agent
+# building task 6.0 when MyPy disagreed with a green suite.
+ignore = ["SIM108", "SIM300"]
+
+# N802/N801 OFF FOR TESTS ONLY (suite tracker 4.27, 2026-10-16). This project's test names
+# shout on purpose - `test_the_save_writes_TOKENIZER_FILES_AT_THE_ROOT` puts the assertion's
+# subject in capitals so it reads in a failure line - and 652 of 740 ruff errors were N802
+# objecting to that convention. The CONFIG disagreed with an intentional convention, so the
+# config changes; `backend/src` keeps both rules.
+[tool.ruff.lint.per-file-ignores]
+"backend/tests/**" = ["N802", "N801"]
+
+[tool.ruff.lint.isort]
+# external -> internal -> relative (ADR-001)
+known-first-party = ["api", "core", "db", "models", "schemas", "services", "clients", "providers", "training", "packs", "workers", "mcp_server"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "backend/src"
+packages = ["api", "core", "db", "models", "schemas", "services", "clients", "providers", "training", "packs", "workers", "mcp_server"]
+warn_unreachable = true
+# NO INCREMENTAL CACHE, so a local run checks what CI checks. 2026-10-17: `main` went red on
+# `unused-ignore` in packs/references.py while every local run said "Success" - a stale
+# `.mypy_cache` was still answering for a module whose ignore had stopped being needed. CI
+# starts with no cache; a local run that keeps one is a different measurement. Costs a full
+# check each run, which is what the gate does anyway.
+incremental = false
+# A library without stubs must be declared, not silently Any-typed everywhere.
+[[tool.mypy.overrides]]
+module = ["transformers.*", "peft.*", "bitsandbytes.*", "accelerate.*", "celery.*", "socketio.*", "kombu.*"]
+ignore_missing_imports = true
+
+# `pyarrow` ships no stubs and no `py.typed`, so it must be DECLARED here rather than
+# silently Any-typed, by this section's own rule above. It is a real dependency (ADR: the
+# format miDataworks' export service writes) read by `training/signals/parts_reader.py`.
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["psutil", "psutil.*"]
+ignore_missing_imports = true
+
+# MyPy runs on the interpreter it checks against: `python_version` is the shipped 3.13, and
+# the lint job in `backend-tests.yml` installs 3.13. Until 2026-10-21 both were 3.11, and
+# MyPy could not run in a newer venv at all - `numpy`'s stubs use PEP 695 `type`
+# statements, and against `python_version = "3.11"` MyPy aborted while PARSING them
+# ("errors prevented further checking"), before looking at one first-party file. That
+# abort is gone because the target moved to the version miForge ships on, not because a
+# setting was raised to silence it. Keep the target, the CI interpreter and the image's
+# base in step: a target below 3.12 brings the numpy-stub abort back, and one above the
+# image checks against a language the image does not run.

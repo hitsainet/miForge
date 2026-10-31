@@ -1,0 +1,91 @@
+# Non-secret configuration shared by every container in the backend pod.
+#
+# ⚠ EVERY KEY HERE IS A FIELD SOME SETTINGS CLASS READS — `backend/src/core/config.py`
+# for all but one, and `backend/src/packs/settings.py` for `PACKS_ROOT`. Keep them in
+# step; a key with no field is ignored silently (`extra="ignore"`), which is the quiet
+# half of a typo. `.env.example` is the third copy and the one a developer sees.
+#
+# ⚠ THIS HEADING SAID "a field `core/config.py` READS" UNTIL 2026-10-14, and the
+# inaccuracy had a cost: `packs_root` lives in a different module, so every list written
+# against `core/config.py` alone — this one, and `storage.yaml`'s volumes — missed the
+# pack store entirely, and a committed pack had nowhere durable to live.
+# `test_gitops_is_a_deploy_path.py` now reads BOTH modules, so a root declared in a third
+# one fails there rather than in production.
+#
+# ⚠ NO SECRET IN THIS FILE, EVER. `gitops/` is NOT on `sync-to-clean.yml`'s exclusion
+# list, so this file publishes to the public mirror. Secrets come from the
+# `miforge-secrets` Secret, created out of band — the command is in `postgres.yaml`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: miforge-config
+  namespace: miforge
+data:
+  REDIS_URL: "redis://redis:6379/0"
+  ENVIRONMENT: "prod"
+  LOG_LEVEL: "INFO"
+
+  # ── The three artifact roots (ADR-004; task 8.5) ────────────────────────────────
+  # These match `core/config.py`'s defaults exactly, and are written out anyway: an
+  # operator reading this manifest should not have to read Python to learn where the
+  # product is stored. `storage.yaml` is where the volumes behind them are declared.
+  CHECKPOINT_ROOT: "/data/checkpoints"
+  TRAINER_STATE_ROOT: "/data/trainer-state"
+  PARTS_ROOT: "/data/parts"
+  # D47 (2026-10-18), permanent: extra checkpoint roots miForge READS and never writes.
+  # miLLM writes an attached run's checkpoints under its own directory, mounted read-only
+  # here (backend.yaml, storage.yaml); continue looks there after CHECKPOINT_ROOT.
+  CHECKPOINT_READ_ROOTS: "/data/millm-checkpoints"
+  # The fourth root, and the only one NOT declared in `core/config.py` — it is
+  # `packs/settings.py`'s `packs_root`, which that class reads case-insensitively with no
+  # env prefix, so this bare name reaches it. Written out for the same reason as the three
+  # above (an operator should not have to read Python to learn where the product is
+  # stored), and because its absence from every such list is precisely how it ended up
+  # with no volume. It equals the field's own default, so this line configures nothing and
+  # documents everything.
+  PACKS_ROOT: "/data/packs"
+
+  # A cache, named one, and deliberately NOT under any of the three above — mixing a
+  # disposable cache into the directory ADR-004 makes authoritative is how a cleanup
+  # script becomes a data-loss incident.
+  HF_HOME: "/data/hf-cache"
+
+  # ── Optional siblings: PRESENT AND EMPTY, deliberately ──────────────────────────
+  # Empty means UNSET means absent-and-normal (ADR-010). `core/config.py` has a
+  # validator that maps an empty string to `None` for exactly this purpose, so these
+  # two lines configure nothing — they DOCUMENT that the standalone path is the default,
+  # which is the property BRD acceptance criterion 20 pins and the whole 2026-10-13
+  # reframe rests on.
+  #
+  # Filling either in enables that integration. Neither is required for any run type.
+  # miLLM:       serving a produced checkpoint, and scoring through its /v1 surface.
+  # miDataworks: dataset parts, selector/grader configurations, the review queue.
+  MILLM_BASE_URL: ""
+  MIDATAWORKS_BASE_URL: ""
+  # miDataworks' REST surface identifies the caller with this header and has no bearer
+  # gate — three surfaces, three credentials, none shared. Must match
+  # `^agent:[a-z0-9][a-z0-9-]{0,47}$` or the process refuses at startup.
+  MIDATAWORKS_AGENT: "agent:miforge"
+
+  # ── F2's masking policy: SET, by suite decision D42 (2026-10-17) ────────────────
+  # Unset, every corpus and self-generation run refuses `sft_masking_policy_not_configured`
+  # (by design: a default would change the objective silently). Found unset in the cluster
+  # during the F11 window: no corpus run could train. `completion_only` is the operator's
+  # intent exactly: a PLAIN-TEXT corpus row becomes prompt="" + completion=text, so EVERY
+  # token of it trains, while prompt/completion data (in a corpus or from self-generation)
+  # keeps its prompt tokens masked. Pinned by test_gitops_is_a_deploy_path.py.
+  SIGNAL_SFT_MASKING_POLICY: "completion_only"
+
+  # ── Jobs (ADR-007) ──────────────────────────────────────────────────────────────
+  # ⚠ A MINIMUM INTERVAL BETWEEN HEARTBEAT WRITES, NOT A MAXIMUM GAP. Anything deriving
+  # a liveness threshold from this number is wrong: a generation-bound test pass or a
+  # 2.4 GB save legitimately exceeds it, and a screen that treated 60 s as a deadline
+  # would show every healthy run as stalled during every save. Read the janitor's
+  # threshold instead.
+  HEARTBEAT_MIN_INTERVAL_SECONDS: "60"
+  # The janitor's lapse threshold. PROVISIONAL: nothing in the product can yet produce
+  # a defensible value, because the measurement that would — the longest observed
+  # heartbeat gap per run (foundation task 6.4b) — does not exist. Revisit with data,
+  # not with judgement.
+  JANITOR_LAPSE_SECONDS: "900"
+  GPU_LEASE_SECONDS: "3600"

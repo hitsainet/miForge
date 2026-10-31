@@ -1,0 +1,158 @@
+# hostIPC for F11 hot-update — an OPT-IN kustomize Component (suite decision D1, 2026-10-16).
+#
+# Operator decision D1: "F11 topology: `hostIPC: true` on both pods, shipped as an opt-in
+# overlay applied only when hot-update is used. Sidecar stays closed (BRD-02)." This is
+# miForge's half; miLLM builds the other half in its own repository. CUDA IPC between the
+# trainer (this pod) and the serving process (miLLM's pod) needs a shared IPC namespace,
+# and two pods share one only through the host's (F11 task 2.3 / 14.2).
+#
+# ⚠ NOT DEPLOYED BY DEFAULT. `gitops/pilot/kustomization.yaml` — the path the `miforge`
+# ArgoCD Application reads (`gitops/pilot/argocd/miforge-app.yaml`) — does NOT list this
+# component, and `backend/tests/unit/test_gitops_hostipc_overlay.py` goes red if it ever
+# does without that test being changed in the same commit. hostIPC lets every process in
+# the pod see the node's System V IPC objects and POSIX shared memory; it is a privilege
+# granted for one mode, not a default.
+#
+# ── HOW TO ENABLE (only for a hot-update session) ─────────────────────────────────────
+# Add the component to the deployed kustomization — ONE line, in a commit, pushed with the
+# operator's go (D16), and reverted by the same route when the session ends:
+#
+#     # gitops/pilot/kustomization.yaml
+#     components:
+#       - ../components/hostipc
+#
+# and update `test_gitops_hostipc_overlay.py` in the same commit (it exists to make enabling
+# a deliberate act, not an accident). Revert both when the session ends.
+#
+# ⚠ DO NOT ENABLE IT BY REPOINTING THE ArgoCD APPLICATION's `path` at
+# `gitops/overlays/hotupdate`. Image Updater writes its digest pin to
+# `<spec.source.path>/.argocd-source-miforge.yaml`, and `sync-main-to-gitops-pilot.yml`
+# protects only `gitops/pilot/.argocd-source-miforge.yaml` from its converge step — so a
+# repointed Application writes its pin somewhere the next push to main deletes, and the
+# cluster silently un-pins. `gitops/overlays/hotupdate/` exists to PREVIEW the rendered
+# result (`kubectl kustomize gitops/overlays/hotupdate`) and for the test, not to deploy.
+#
+# Preconditions (F11 GPU block): miLLM's own hostIPC half applied; no run in progress
+# (a rollout kills the train worker — AGENT.md, Recreate strategy); the trainer token in
+# `miforge-secrets` and MILLM_BASE_URL set (F11 §16.1). See F11 FTASKS 14.3.
+#
+# ── SECURITY NOTE: THE UID PAIRING (operator-approved step 2, 2026-10-17) ────────────────────
+# hostIPC alone is NOT enough, and the first live attempt proved it (F11 14.3, 2026-10-17):
+# both pods shared one IPC namespace and one /dev/shm, attach succeeded, and the first handle
+# open failed (`cudaErrorMapBufferObjectFailed`, "Failed to open/create interprocess memory
+# file") because CUDA and torch create their IPC files (`/dev/shm/cuda.shm.*`, `torch_*`)
+# OWNER-ONLY, 0600, even under umask 0022 - so only a process with miLLM's uid can open
+# them, and a shared group does not help. So while this component is on, `worker-train`
+# runs as **uid 1000** (miLLM's, pinned in miLLM's Dockerfile and declared by miLLM's own
+# hostipc component; `test_gitops_hostipc_overlay.py` compares the two).
+#
+# What that grants, stated plainly: the train worker can open miLLM's shared-memory files,
+# and any file miLLM's uid can reach on a shared mount - which here is nothing, because the
+# two pods share no volume except miLLM's READ-ONLY mount of our checkpoints. It is the
+# access CUDA IPC needs and no more, which is why it is a mode and is switched off after.
+#
+# How the volumes keep working across the switch, and why it is done this way:
+#   * runAsGroup stays **10001** (miforge's group), so everything the worker creates is
+#     group-miforge; and it runs under `umask 0002`, so the DIRECTORIES it creates (a run's
+#     checkpoint root, its log directory) are group-writable. After the revert, uid 10001
+#     writes into them through the group - a run started in the session can be continued.
+#   * Artifact FILES keep `atomic_dir`'s explicit 0644/0755 (`core/atomic_dir.py`): an
+#     artifact is immutable once published and must not become writable to anyone else.
+#   * The init container below makes the EXISTING directories of the four data roots
+#     group-writable and setgid, so uid 1000 can create entries in directories 10001 made.
+#     Directories only: metadata, no file contents, no recursive chown (which the default
+#     init container avoids for cost) - and pre-existing files are left exactly as they were.
+#     Those bits (g+w, setgid) are NOT removed when the component is switched off: the group
+#     is miforge's own, so they widen nothing beyond this pod, and removing them would strand
+#     directories the session created. Verified 2026-10-17 on the real image (as 1000:10001
+#     under umask 0002: torch 2.14.1+cu130, gcc found, HOME writable, entries created in 10001's
+#     directories, pre-existing 0644 files stay read-only; then as 10001 after the "revert":
+#     a step directory added to the session's run and its 0664 log appended).
+#   * `HF_HOME` and `HOME` point at private /tmp paths for the session, so the shared
+#     hf-cache volume is never written by uid 1000: Hugging Face lock files created 0644 by
+#     uid 1000 could not be reopened by 10001 after the revert. The cost is re-fetching a
+#     tokenizer and config per pod (the weights arrive over CUDA IPC, not from the Hub).
+#     HOME also gives triton's JIT cache a writable place: uid 1000 has no passwd entry here.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: miforge-backend
+    # Pod-level hostIPC: Kubernetes has no per-container IPC namespace, which is why D1
+    # frames this as a mode rather than a setting. The uid is per CONTAINER: only
+    # worker-train runs as miLLM's uid; the API and the other workers stay 10001.
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: miforge-backend
+      spec:
+        template:
+          spec:
+            hostIPC: true
+            containers:
+              - name: worker-train
+                securityContext:
+                  runAsUser: 1000
+                  runAsGroup: 10001
+                # NOT `exec`: celery must not be PID 1. CUDA identifies an IPC handle's creator
+                # by PID, and miLLM's server is PID 1 of ITS namespace - so a trainer that is
+                # also PID 1 is told every handle is "locally created" and cannot open one
+                # (`cuIpcOpenMemHandle` -> CUDA_ERROR_INVALID_CONTEXT, found live 2026-10-17).
+                # The shell stays PID 1, forwards TERM/INT and returns the worker's status.
+                command:
+                  - sh
+                  - -c
+                  - |
+                    umask 0002
+                    celery -A workers.celery_app:celery_app worker --pool=solo -c 1 -Q train -n train@%h --loglevel=INFO &
+                    child=$!
+                    trap 'kill -TERM "$child" 2>/dev/null' TERM INT
+                    wait "$child"; status=$?
+                    if kill -0 "$child" 2>/dev/null; then wait "$child"; status=$?; fi
+                    exit "$status"
+                env:
+                  - name: HOME
+                    value: /tmp/hotupdate-home
+                  - name: HF_HOME
+                    value: /tmp/hotupdate-hf
+  # The init container, APPENDED (`/-`) so it runs after data-volume-owner, which creates and
+  # chowns the roots on a fresh volume. A strategic-merge list puts it first, where `find`
+  # would meet a root that does not exist yet and the pod would never start.
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: miforge-backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/initContainers/-
+        value:
+          name: hotupdate-shared-dirs
+          image: busybox:1.37
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              for d in /data/checkpoints /data/trainer-state /data/runs /data/parts /data/packs; do
+                find "$d" -type d -exec chmod g+rwxs {} +
+              done
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /data/checkpoints
+            - name: trainer-state
+              mountPath: /data/trainer-state
+            - name: runs
+              mountPath: /data/runs
+            - name: parts
+              mountPath: /data/parts
+            - name: packs
+              mountPath: /data/packs

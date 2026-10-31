@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- `class="dark"` so the first paint is the theme the mockup and every document show.
+     ADR-011's `darkMode: 'class'`; ThemeProvider replaces it if a preference is stored. -->
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>miForge</title>
+    <meta name="description" content="miForge - AI Model Foundry" />
+    <!-- The tab mark. Until 2026-10-14 there was NO icon link of any kind here and no
+         `public/` directory, and the failure was silent in a way worth recording: nginx's
+         `location /` does `try_files $uri $uri/ /index.html`, so a browser's automatic
+         `GET /favicon.ico` was answered with **index.html at 200 and `text/html`**. Not a
+         404, not a broken-image glyph - an HTML document served as an icon, which every
+         browser discards without complaint while showing its default mark. `nginx.conf`
+         now answers an absent root icon with 404 so the next such gap is visible.
+
+         SVG ONLY, as all three siblings do (`miStudio/frontend/public/favicon.svg`,
+         `miDataworks/frontend/public/favicon.svg`, `miLLM/admin-ui` -> `millm-icon.svg`).
+         Vite copies `public/` to the build root, so `/favicon.svg` resolves in `npm run
+         dev`, in `vite preview` (which is what Playwright serves) and in the nginx image.
+
+         ⚠ NO `apple-touch-icon` AND NO `favicon.ico`, DELIBERATELY - see
+         `test_favicon_is_the_logo_tile.py`. Both must be rasters (iOS ignores an SVG
+         touch icon), no rasteriser exists on this workstation, and a hand-written
+         approximation would be a DIFFERENT mark shipped as the real one. Their absence is
+         now an honest 404 rather than an HTML document, and that is the better of the two
+         failures available without a rasteriser. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
