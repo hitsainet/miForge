@@ -1,0 +1,714 @@
+{
+  "$defs": {
+    "CompletionLogprobs": {
+      "description": "OpenAI legacy-completions `logprobs` object, one entry per generated token.",
+      "properties": {
+        "text_offset": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Text Offset",
+          "type": "array"
+        },
+        "token_logprobs": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Token Logprobs",
+          "type": "array"
+        },
+        "tokens": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tokens",
+          "type": "array"
+        },
+        "top_logprobs": {
+          "items": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          },
+          "title": "Top Logprobs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tokens",
+        "token_logprobs",
+        "top_logprobs",
+        "text_offset"
+      ],
+      "title": "CompletionLogprobs",
+      "type": "object"
+    },
+    "InlineSteering": {
+      "additionalProperties": false,
+      "description": "`steering: {sae_id?, features: [{index, strength}]}` (FR-28.1.1).\n\n`features: []` means EXPLICITLY UNSTEERED for this request, on every attached SAE (FR-28.2.2);\nan `sae_id` beside it is refused, because it suggests a scope the empty form does not have.",
+      "properties": {
+        "features": {
+          "items": {
+            "$ref": "#/$defs/InlineSteeringFeature"
+          },
+          "title": "Features",
+          "type": "array"
+        },
+        "sae_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sae Id"
+        }
+      },
+      "required": [
+        "features"
+      ],
+      "title": "InlineSteering",
+      "type": "object"
+    },
+    "InlineSteeringFeature": {
+      "additionalProperties": false,
+      "description": "One `{index, strength}` of an inline set. `strength` is clamped to ±200 at apply time\n(FR-28.1.7) and the clamp is reported in `X-miLLM-Steering`, never silent.",
+      "properties": {
+        "index": {
+          "minimum": 0.0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "strength": {
+          "title": "Strength",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "strength"
+      ],
+      "title": "InlineSteeringFeature",
+      "type": "object"
+    },
+    "MillmExtension": {
+      "description": "The `millm` object. Every field is optional and omitted when absent.",
+      "properties": {
+        "sae_activations": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SaeActivationsBlock"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "MillmExtension",
+      "type": "object"
+    },
+    "PositionRange": {
+      "additionalProperties": false,
+      "description": "`{start, end}`: absolute positions over the processed sequence, half-open.",
+      "properties": {
+        "end": {
+          "exclusiveMinimum": 0.0,
+          "title": "End",
+          "type": "integer"
+        },
+        "start": {
+          "minimum": 0.0,
+          "title": "Start",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "PositionRange",
+      "type": "object"
+    },
+    "ReturnSaeActivations": {
+      "additionalProperties": false,
+      "description": "`return_sae_activations` on `/v1/chat/completions` and `/v1/completions` (FR-27.1).\n\n`positions` is absolute over the processed sequence (prompt, then generated tokens). The final\nsampled token is never fed back, so it has no activation (FR-27.1c). `features` restricts the\ncandidates; `top_k` picks the largest among them, as the monitoring configuration does.",
+      "properties": {
+        "features": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Features"
+        },
+        "positions": {
+          "anyOf": [
+            {
+              "enum": [
+                "last",
+                "prompt",
+                "completion",
+                "all"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/PositionRange"
+            }
+          ],
+          "title": "Positions"
+        },
+        "read_point": {
+          "default": "post_steering",
+          "enum": [
+            "post_steering",
+            "pre_steering"
+          ],
+          "title": "Read Point",
+          "type": "string"
+        },
+        "sae_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sae Id"
+        },
+        "top_k": {
+          "minimum": 1.0,
+          "title": "Top K",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "top_k",
+        "positions"
+      ],
+      "title": "ReturnSaeActivations",
+      "type": "object"
+    },
+    "SaeActivationFeature": {
+      "properties": {
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "value"
+      ],
+      "title": "SaeActivationFeature",
+      "type": "object"
+    },
+    "SaeActivationPosition": {
+      "properties": {
+        "features": {
+          "items": {
+            "$ref": "#/$defs/SaeActivationFeature"
+          },
+          "title": "Features",
+          "type": "array"
+        },
+        "position": {
+          "title": "Position",
+          "type": "integer"
+        },
+        "token_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Token Id"
+        }
+      },
+      "required": [
+        "position",
+        "features"
+      ],
+      "title": "SaeActivationPosition",
+      "type": "object"
+    },
+    "SaeActivationsBlock": {
+      "properties": {
+        "layer": {
+          "title": "Layer",
+          "type": "integer"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        },
+        "positions": {
+          "items": {
+            "$ref": "#/$defs/SaeActivationPosition"
+          },
+          "title": "Positions",
+          "type": "array"
+        },
+        "read_point": {
+          "enum": [
+            "post_steering",
+            "pre_steering",
+            "unsteered"
+          ],
+          "title": "Read Point",
+          "type": "string"
+        },
+        "sae_id": {
+          "title": "Sae Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sae_id",
+        "layer",
+        "read_point",
+        "positions",
+        "note"
+      ],
+      "title": "SaeActivationsBlock",
+      "type": "object"
+    },
+    "TextCompletionChoice": {
+      "description": "Single completion choice in text completion response.",
+      "properties": {
+        "finish_reason": {
+          "enum": [
+            "stop",
+            "length",
+            "timeout"
+          ],
+          "title": "Finish Reason",
+          "type": "string"
+        },
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "logprobs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompletionLogprobs"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "text",
+        "finish_reason"
+      ],
+      "title": "TextCompletionChoice",
+      "type": "object"
+    },
+    "TextCompletionRequest": {
+      "additionalProperties": true,
+      "description": "Text completion request - OpenAI format (legacy completions endpoint).\n\nKnown deviation from the OpenAI API: max_tokens defaults to None (→ 512\nin GenerationConfig) rather than the OpenAI spec value of 16.  The OpenAI\ndefault is counterproductive for a self-hosted LLM where users always want\nmore than 16 tokens.  Clients that need the original 16-token behaviour\nmust set max_tokens=16 explicitly.",
+      "properties": {
+        "add_special_tokens": {
+          "default": true,
+          "title": "Add Special Tokens",
+          "type": "boolean"
+        },
+        "allowed_token_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 1024,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Allowed Token Ids"
+        },
+        "frequency_penalty": {
+          "default": 0.0,
+          "maximum": 2.0,
+          "minimum": -2.0,
+          "title": "Frequency Penalty",
+          "type": "number"
+        },
+        "logprobs": {
+          "anyOf": [
+            {
+              "maximum": 20.0,
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Logprobs"
+        },
+        "max_completion_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Completion Tokens"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Tokens"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "n": {
+          "default": 1,
+          "minimum": 1.0,
+          "title": "N",
+          "type": "integer"
+        },
+        "presence_penalty": {
+          "default": 0.0,
+          "maximum": 2.0,
+          "minimum": -2.0,
+          "title": "Presence Penalty",
+          "type": "number"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Profile"
+        },
+        "prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Prompt"
+        },
+        "return_sae_activations": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReturnSaeActivations"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "return_tokens_as_token_ids": {
+          "default": false,
+          "title": "Return Tokens As Token Ids",
+          "type": "boolean"
+        },
+        "scoring_precision": {
+          "anyOf": [
+            {
+              "enum": [
+                "native",
+                "float32"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scoring Precision"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "maximum": 4294967295.0,
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Seed"
+        },
+        "steering": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InlineSteering"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "steering_intensity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "off",
+                "min",
+                "max"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Steering Intensity"
+        },
+        "stop": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stop"
+        },
+        "stream": {
+          "default": false,
+          "title": "Stream",
+          "type": "boolean"
+        },
+        "temperature": {
+          "default": 1.0,
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "top_p": {
+          "default": 1.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Top P",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "prompt"
+      ],
+      "title": "TextCompletionRequest",
+      "type": "object"
+    },
+    "TextCompletionResponse": {
+      "description": "Non-streaming text completion response.\n\nThe `id` format is \"cmpl-{24 hex chars}\".",
+      "properties": {
+        "choices": {
+          "items": {
+            "$ref": "#/$defs/TextCompletionChoice"
+          },
+          "title": "Choices",
+          "type": "array"
+        },
+        "created": {
+          "title": "Created",
+          "type": "integer"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "millm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MillmExtension"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "millm_probe_verdicts": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Millm Probe Verdicts"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "object": {
+          "const": "text_completion",
+          "default": "text_completion",
+          "title": "Object",
+          "type": "string"
+        },
+        "scoring_precision": {
+          "anyOf": [
+            {
+              "enum": [
+                "native",
+                "float32"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scoring Precision"
+        },
+        "system_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "System Fingerprint"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "id",
+        "created",
+        "model",
+        "choices",
+        "usage"
+      ],
+      "title": "TextCompletionResponse",
+      "type": "object"
+    },
+    "Usage": {
+      "description": "Token usage statistics.",
+      "properties": {
+        "completion_tokens": {
+          "default": 0,
+          "title": "Completion Tokens",
+          "type": "integer"
+        },
+        "prompt_tokens": {
+          "title": "Prompt Tokens",
+          "type": "integer"
+        },
+        "total_tokens": {
+          "default": 0,
+          "title": "Total Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "prompt_tokens"
+      ],
+      "title": "Usage",
+      "type": "object"
+    }
+  },
+  "$id": "https://hitsai.net/schemas/millm-scoring-api-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "GENERATED from miLLM's registered POST /v1/completions route (its request and response models, via FastAPI's OpenAPI) and its error table; do not edit by hand. Scoring mode is `logprobs` and/or `allowed_token_ids` with max_tokens=1. `scoring_precision: \"float32\"` runs the forward over a float32 copy of the resident parameters; the response echoes the precision that RAN in the body field `scoring_precision` and the echo header, or the request is refused with the refusal code and one of the reasons, never answered in another precision.",
+  "path": "/v1/completions",
+  "request": {
+    "$ref": "#/$defs/TextCompletionRequest"
+  },
+  "response": {
+    "$ref": "#/$defs/TextCompletionResponse"
+  },
+  "scoring_precision": {
+    "echo_body_field": "scoring_precision",
+    "echo_header": "X-miLLM-Scoring-Precision",
+    "refusal": {
+      "code": "scoring_precision_unavailable",
+      "param": "scoring_precision",
+      "reason_header": "X-miLLM-Scoring-Precision-Reason",
+      "reasons": [
+        "memory",
+        "device",
+        "model_not_float32_castable",
+        "busy"
+      ],
+      "status": 409,
+      "type": "invalid_request_error"
+    },
+    "values": [
+      "native",
+      "float32"
+    ]
+  },
+  "title": "miLLM /v1/completions scoring"
+}

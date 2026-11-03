@@ -1,0 +1,82 @@
+name: Deploy Manual to GitHub Pages
+
+# Builds manual/ (Docusaurus) and publishes it to GitHub Pages at
+# https://hitsainet.github.io/miForge/ — FROM THE PUBLIC MIRROR ONLY. Modelled on miStudio's
+# deploy-manual.yml, with two differences, both deliberate:
+#
+# * A REPOSITORY GATE. miStudio's copy has none, so it also builds a Pages site on its private
+#   primary. Here the private repo's build check is manual-ci.yml; this workflow publishes, and
+#   publishing belongs to the public mirror alone.
+# * LEAST-PRIVILEGE TOKENS PER JOB. `pages: write` and `id-token: write` are granted only to
+#   the deploy job, not to the build that runs third-party npm code.
+#
+# WHY A DISPATCH AS WELL AS A PUSH TRIGGER. The mirror receives a force-pushed, single-commit
+# ORPHAN snapshot (sync-to-clean.yml), so a `paths:` filter has no previous commit to diff
+# against and matches nothing — miStudio's manual sat eighteen days stale that way. The sync
+# therefore dispatches this workflow explicitly after every push; the push trigger stays for a
+# mirror that ever keeps ordinary history.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'manual/**'
+      - 'docs/mcp-contract.md'
+      - '.github/workflows/deploy-manual.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # HARD STOP: publish only from the public mirror. A gate that fails to match skips the job
+    # silently, so the mirror's exact name is spelled here and pinned by
+    # backend/tests/unit/test_manual_workflows.py.
+    if: github.repository == 'hitsainet/miForge'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: manual/package-lock.json
+
+      - name: Install dependencies
+        working-directory: manual
+        run: npm ci
+
+      # `npm run build` runs prebuild (the MCP tool page from docs/mcp-contract.md), the
+      # Docusaurus build (broken links, anchors and Markdown links all fail it) and postbuild
+      # (scripts/check-published.mjs: nothing internal or secret in any page).
+      - name: Build Docusaurus site
+        working-directory: manual
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: manual/build
+
+  deploy:
+    if: github.repository == 'hitsainet/miForge'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

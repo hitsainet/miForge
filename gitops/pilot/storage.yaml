@@ -1,0 +1,472 @@
+# miForge's FOUR artifact volumes — APPLIED OUT OF BAND, NOT BY ARGOCD.
+#
+# ⚠ THIS HEADING SAID "three" UNTIL 2026-10-14, and it was not merely a stale count: the
+# fourth volume was genuinely missing and losing a pack was the consequence. Corrected
+# together with the thing it described, because a heading that disagrees with its own
+# body is this project's single most common defect and the half a reader trusts first.
+#
+# Foundation task 8.5 named three. The fourth, `/data/packs`, is declared in
+# `packs/settings.py` rather than `core/config.py`, which is exactly why no list that read
+# one module ever saw it. ADR-004 makes every one of the four AUTHORITATIVE rather than
+# cached:
+#
+#   /data/checkpoints     Hugging Face checkpoint directories + `manifest.json`. The
+#                         product. 480–960 GB for one 10,000-step run at
+#                         `save_every=100`, and no checkpoint lifecycle exists yet —
+#                         size this with that number in front of you, not the 200Gi below.
+#   /data/trainer-state   Optimizer state and RNG state (R-02.15), the sixth shared
+#                         contract. What a `continue` run reads.
+#   /data/parts           Imported dataset parts (F10's `PARTS_ROOT`). ⚠ NOT A CACHE:
+#                         a part's manifest is the authority under ADR-004, so this is
+#                         artifact storage on the same footing as checkpoints. It is the
+#                         one of the four that reads like a cache and is not.
+#   /data/packs           Pack definitions — `pack.json`, which `pack-definition-v1.json`
+#                         makes the AUTHORITATIVE on-disk record of a pack version. Tiny
+#                         (references, not data) and the only one whose absence was
+#                         silent: see its own note further down.
+#
+# ── ⚠ DELIBERATELY ABSENT FROM `kustomization.yaml` ────────────────────────────────
+# That is not an oversight; the kustomization says so too. ArgoCD `selfHeal` reconciling
+# a data-bearing volume is how a database gets deleted by a sync. This file exists so
+# the resources are RECORDED AND REPRODUCIBLE, not so they are applied automatically.
+#
+#     kubectl apply -f gitops/pilot/storage.yaml
+#
+# The pattern is miStudio's `k8s/neuronpedia/storage.yaml`, and the reason that file
+# exists is the reason this one does: **Neuronpedia was down for 19 days and nothing
+# said why.** Its PVs had been created ad hoc and tracked in no manifest, so when the
+# GPU node moved they were invisible to the migration — postgres sat `Pending` with
+# `volume node affinity conflict` across 8 restarts. A resource that lives only in a
+# cluster cannot be migrated with the cluster.
+#
+# ── WHY A LOCAL PV AND PVC RATHER THAN A BARE hostPath ────────────────────────────
+# miLLM, miStudio and miDataworks all mount a plain `hostPath` volume for their data,
+# and record the reason: ArgoCD prune can never delete one. That reason is honoured here
+# by keeping this file out of the sync, which closes the same hole — and a PVC buys two
+# things a bare hostPath does not:
+#   * `persistentVolumeReclaimPolicy: Retain` plus an explicit `volumeName` binding, so
+#     deleting the claim does not touch the files;
+#   * `nodeAffinity` ON THE VOLUME, so a pod that drifts to the wrong node fails to
+#     schedule instead of silently coming up healthy against an empty directory. That
+#     silent-empty failure is the one miStudio hit twice and miDataworks pins its node
+#     selector to avoid.
+#
+# `storageClassName: miforge-local-storage` names a class NO PROVISIONER SERVES, which
+# is what makes these bind to exactly the volumes below and nothing else. There is no
+# dynamic provisioner on this cluster; a claim left on the default class would sit
+# `Pending` forever.
+#
+# `type: DirectoryOrCreate` means no `mkdir` on the node is needed first — miDataworks
+# records that a `local:` PV refuses a directory that does not exist, which is a manual
+# step before the first run. The cost is the silent-empty behaviour above, which the
+# `nodeAffinity` is there to catch.
+#
+# ⚠ `nodeAffinity` IS IMMUTABLE on an existing PV. Changing the node means deleting and
+# recreating the PV and its claim. With `Retain` that does not touch the files, but it
+# does unbind the claim — and MOVE THE DATA FIRST, then verify it at the destination,
+# before repinning.
+#
+# ⚠ THE CAPACITIES BELOW ARE NOT A MEASUREMENT. A local PV's `capacity` is metadata for
+# the binder; it enforces nothing, and the real limit is free space on the node's disk.
+# ── CHECKPOINT CAPACITY RAISED 200Gi → 800Gi, 2026-10-14 (operator decision) ──────────
+# **Operator chose "raise the volume and defer the retention policy."** The sizing argument,
+# so the next reader does not have to redo it:
+#
+# One 10,000-step run at `save_every=100` writes **480–960 GB** of checkpoints, and at 200Gi
+# the volume held **22–44 saves** — a long run filled it somewhere around step 2,200–4,400
+# and then failed mid-run. 800Gi covers the low end comfortably and most of the range.
+#
+# ⚠ **THIS NUMBER RESERVES NOTHING, AND THAT IS THE IMPORTANT PART.** A `hostPath` PV's
+# `capacity` is **advisory**: nothing enforces it, and the real limit is the node's
+# filesystem. Measured on `mcs-lnxhost02` rather than assumed —
+# `/dev/mapper/ubuntu--vg--1-k8s--pv` is **2.8T with 1.6T free**, and it is **shared with
+# miLLM, miStudio, miDataworks and neuronpedia**, whose hostPath PVs already claim 0.79Ti
+# between them. So 800Gi was chosen to leave the siblings room, not because 800Gi exists for
+# miForge alone. **Over-claiming here would let miForge silently eat a sibling's space**,
+# because the number is a promise to a reader and not a limit on a writer.
+#
+# **So the retention policy is still owed** — see F1's task 2.5, where the question is
+# corrected and split into (a) the cheap `mf_steps` index rule and (b) this, the checkpoint
+# lifecycle. Raising the ceiling moved the failure further out; it did not remove it. When
+# it is written, it must never delete a checkpoint that is a **parent in the lineage tree**:
+# that is a correctness constraint, not a space one, because pruning a branch parent breaks
+# every lineage walk through it.
+#
+# **Changing a bound PV's size is delete-and-recreate here, not an expansion.**
+# `storageClassName: miforge-local-storage` names a class **no provisioner serves** and that
+# does not exist as an object, so there is no `allowVolumeExpansion` path. The swap is safe
+# only because `persistentVolumeReclaimPolicy: Retain` keeps `/data/miforge/checkpoints`
+# untouched while the PV and PVC are replaced — and the ArgoCD Application **self-heals**,
+# so the consumer must be scaled down with auto-sync suspended, not just scaled down.
+# They are written as the smallest honest statement of intent, not as a quota.
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: miforge-checkpoints-pv
+  labels:
+    app.kubernetes.io/part-of: miforge
+spec:
+  capacity:
+    storage: 800Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: miforge-local-storage
+  volumeMode: Filesystem
+  hostPath:
+    path: /data/miforge/checkpoints
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                # The GPU node. Moved from mcs-lnxgpu01 to mcs-lnxhost02 on 2026-09-13;
+                # mcs-lnxgpu01 is unreachable ("no route to host"). Every sibling pins
+                # here.
+                - mcs-lnxhost02
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: miforge-checkpoints
+  namespace: miforge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 800Gi
+  storageClassName: miforge-local-storage
+  # Explicit binding, so this claim can never be satisfied by some other volume.
+  volumeName: miforge-checkpoints-pv
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: miforge-trainer-state-pv
+  labels:
+    app.kubernetes.io/part-of: miforge
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: miforge-local-storage
+  volumeMode: Filesystem
+  hostPath:
+    path: /data/miforge/trainer-state
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - mcs-lnxhost02
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: miforge-trainer-state
+  namespace: miforge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: miforge-local-storage
+  volumeName: miforge-trainer-state-pv
+---
+# ── RUN LOGS (added 2026-10-17) ────────────────────────────────────────────────────
+# `run.jsonl` per run is the AUTHORITATIVE record (ADR-004) and lives at
+# `<trainer_state_root>.parent/runs` = /data/runs. Until 2026-10-17 nothing backed that path:
+# /data is the container's root-owned overlay, so `POST /runs/define` 500'd on its mkdir and
+# no production run could be created (found live, F11 window 2) - and had it been writable,
+# every run log would have vanished with the pod.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: miforge-runs-pv
+  labels:
+    app.kubernetes.io/part-of: miforge
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: miforge-local-storage
+  volumeMode: Filesystem
+  hostPath:
+    path: /data/miforge/runs
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - mcs-lnxhost02
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: miforge-runs
+  namespace: miforge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: miforge-local-storage
+  volumeName: miforge-runs-pv
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: miforge-parts-pv
+  labels:
+    app.kubernetes.io/part-of: miforge
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: miforge-local-storage
+  volumeMode: Filesystem
+  hostPath:
+    path: /data/miforge/parts
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - mcs-lnxhost02
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: miforge-parts
+  namespace: miforge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: miforge-local-storage
+  volumeName: miforge-parts-pv
+---
+# ⚠ THE FOURTH ARTIFACT ROOT, ADDED 2026-10-14 — AND ITS ABSENCE WAS DATA LOSS.
+#
+# This is **the same defect `docker compose` had and had fixed the same day**, surviving
+# untouched in the GitOps path. `test_compose_is_a_deploy_path.py` records it as defect 4
+# and calls it "data loss rather than an outage":
+#
+#   "`pack.json` became the authoritative record of a pack version the same day, so a
+#    committed pack lived in the container's writable layer and vanished on the next
+#    recreate — taking the authoritative copy and leaving the database index pointing at
+#    packs that no longer existed."
+#
+# Every word of that applied here, and more sharply: `backend.yaml` sets
+# `strategy: Recreate`, so **every deploy** recreates the pod. A pack written without
+# this volume survives until the next image build.
+#
+# ⚠ WHY NOTHING CAUGHT IT. The other three roots are declared in `core/config.py`;
+# `packs_root` is declared in `packs/settings.py` — **a different module** — and that
+# module's own docstring calls it "a fourth artifact root beside `checkpoint_root`,
+# `trainer_state_root` and `parts_root` (foundation task 8.5's PVCs)". It named this file
+# as the place its volume lives, and this file had no such volume: a claim whose cited
+# target did not support it, the project's signature defect, in the one direction that
+# costs an artifact. The compose test generalised its assertion to read BOTH modules for
+# exactly this reason; `test_gitops_is_a_deploy_path.py` now does the same for the cluster,
+# so a fifth root added in any module fails there rather than in production.
+#
+# Small, unlike its neighbours: "a pack is references, not data — a few kilobytes"
+# (`packs/settings.py`). 5Gi is the smallest honest statement of intent, not a quota —
+# a local PV's capacity enforces nothing (see the header).
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: miforge-packs-pv
+  labels:
+    app.kubernetes.io/part-of: miforge
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: miforge-local-storage
+  volumeMode: Filesystem
+  hostPath:
+    path: /data/miforge/packs
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - mcs-lnxhost02
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: miforge-packs
+  namespace: miforge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: miforge-local-storage
+  volumeName: miforge-packs-pv
+---
+# The Hugging Face cache. NOT one of task 8.5's three and not an artifact root — a
+# cache, and named one. It is here because a 2.4 GB base-model download per pod restart
+# across a link this node runs at x4 (≈7.9 GB/s Gen4 x4, not an x16 figure) is a real
+# cost, and because putting it on the checkpoint volume would mix a disposable cache
+# into the directory ADR-004 makes authoritative. Losing this costs a download.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: miforge-hf-cache-pv
+  labels:
+    app.kubernetes.io/part-of: miforge
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: miforge-local-storage
+  volumeMode: Filesystem
+  hostPath:
+    path: /data/miforge/hf-cache
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - mcs-lnxhost02
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: miforge-hf-cache
+  namespace: miforge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: miforge-local-storage
+  volumeName: miforge-hf-cache-pv
+---
+# PostgreSQL's data directory. Separate from the artifact volumes on purpose: ADR-004
+# makes this one THE REBUILDABLE ONE. Losing it costs a `reindex` (task 4.3) and no
+# artifact — which is only true while nothing but the index lives here, so if a future
+# table becomes a record of truth, this comment is the thing that has gone stale.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: miforge-pgdata-pv
+  labels:
+    app.kubernetes.io/part-of: miforge
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: miforge-local-storage
+  volumeMode: Filesystem
+  hostPath:
+    path: /data/miforge/pgdata
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - mcs-lnxhost02
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: miforge-pgdata
+  namespace: miforge
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: miforge-local-storage
+  volumeName: miforge-pgdata-pv
+---
+# D47 (2026-10-18): miLLM's checkpoint directory, mounted READ-ONLY into miForge so a hot-update
+# run (whose checkpoints miLLM writes) can be continued. RETAIN, and `type: Directory` (never
+# ...OrCreate): this volume points at ANOTHER APPLICATION'S DATA - deleting the claim must never
+# delete it, and a missing directory must leave the pod Pending rather than create an empty one.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: miforge-millm-checkpoints-pv
+  labels:
+    app.kubernetes.io/part-of: miforge
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadOnlyMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: miforge-local-storage
+  volumeMode: Filesystem
+  hostPath:
+    path: /data/millm/data/checkpoints
+    type: Directory
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - mcs-lnxhost02
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: miforge-millm-checkpoints
+  namespace: miforge
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: miforge-local-storage
+  volumeName: miforge-millm-checkpoints-pv

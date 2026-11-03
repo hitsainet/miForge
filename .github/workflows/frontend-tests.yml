@@ -1,0 +1,141 @@
+name: Frontend Tests
+
+# The TypeScript strict typecheck and Vitest (foundation task 1.3; ADR-011, ADR-016).
+# Adapted from miDataworks' `frontend-ci.yml`, which is miLLM's with the `paths:`
+# filter removed.
+#
+# The two commands are the ones AGENT.md's "Test Commands" section names, and they are
+# the ones `frontend/package.json` actually defines — checked, not assumed:
+#   npm run typecheck   ->  tsc -b --noEmit   (ADR-011: TS strict)
+#   npm test            ->  vitest run
+# `lint` and `format:check` exist in that file too and are NOT run here: task 1.3 asks
+# for Vitest and a typecheck, and inventing a third gate would make this workflow the
+# place where ADR-018's TypeScript standards are decided. File that against 1.x if it
+# is wanted.
+#
+# Playwright (`npm run test:e2e`) IS run here as of 2026-10-14. ~~It needs a browser
+# download and a running API; ADR-016 schedules it per screen as features close.~~
+#
+# **The "running API" half was true when written and is now false**, and that is why the
+# exclusion was worth re-checking rather than re-reading: every spec stubs the API **at the
+# network** with `page.route`, and `playwright.config.ts`'s own `webServer` builds and
+# previews the bundle. Verified before changing this file — `npx playwright test` with
+# nothing listening on :8000 is **94 passed in 13.9s**. (The run logs `http proxy error:
+# ECONNREFUSED` from Vite's dev proxy; that is the un-stubbed requests failing harmlessly,
+# not a test failing.)
+#
+# So 94 cases across six specs were **ungated**: ADR-016 lists Playwright per screen among
+# this project's testing standards, and nothing ran them anywhere except a developer's
+# machine. Same class as the two findings AGENT.md already records — a `pyarrow` refusal
+# test that skipped on every machine at once, and `mypy` aborting before it checked
+# anything: a check that does not happen reports nothing, and reports it in green.
+#
+# NO `paths:` FILTER, for the reason backend-tests.yml gives at length: a filtered
+# trigger produces no run at all for a push it does not match, and "no run" and "passed"
+# are indistinguishable in a branch protection rule.
+#
+# ⚠ ONE THING IS STILL MISSING, AND IT IS NOT PAPERED OVER: `frontend/package-lock.json`.
+# `vite.config.ts`'s `setupFiles` target (`tests/setup.ts`) and task 7.2's token test
+# both exist, so Vitest has real work to do — but with no lockfile the install resolves
+# the floating ranges in `package.json` fresh, so CI is not testing the dependency set
+# anyone else has. The install step below WARNS LOUDLY rather than failing, and there is
+# no `--passWithNoTests` and no skip anywhere in this file: a conditional that has become
+# permanently true is indistinguishable from having no test at all, and nothing else in
+# this repository would notice.
+#
+# ⚠ This paragraph was written when `tests/setup.ts` and the test files did NOT exist,
+# and was false within the hour. It is corrected rather than deleted because the thing
+# that made it false — another agent finishing task 7.1 — is exactly how a note about
+# someone else's work goes stale. Re-check it against `frontend/` rather than trusting it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Node 22 LTS (suite decision D34, 2026-10-17; Node 20 reached end-of-life
+          # 2026-04-30), the same major `frontend/Dockerfile`'s builder stage uses, so CI
+          # tests the toolchain that actually builds the published image.
+          node-version: '22'
+          # ✅ ENABLED 2026-10-14. This block previously read "NO `cache: 'npm'` YET,
+          # deliberately… add it in the same commit that commits the lockfile" — and
+          # `frontend/package-lock.json` was committed WITHOUT that edit, so the
+          # instruction outlived its own condition. That is the stale-note failure this
+          # project keeps paying for: a correct caution that has quietly become wrong, left
+          # where the next reader trusts it.
+          #
+          # The original caution was sound and is why the condition mattered: setup-node's
+          # npm cache FAILS THE STEP when `cache-dependency-path` resolves to nothing, so
+          # enabling it with no lockfile would have made every run red for a missing cache
+          # rather than for a failing test. The lockfile now exists (verified present, not
+          # assumed), so the failure mode is gone and `npm ci` below is the branch that
+          # actually runs.
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            # `npm ci`, not `npm install`: it installs the lockfile exactly and fails
+            # when the lockfile and package.json disagree. That disagreement is what
+            # makes a local pass and a CI failure irreconcilable.
+            npm ci
+          else
+            echo "::warning title=No lockfile::frontend/package-lock.json is absent, so this install resolved the floating ranges in package.json fresh. CI is NOT testing the dependency set anyone else has. Commit a lockfile (foundation task 7.1)."
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # ⚠ `--with-deps` installs the system libraries the browser needs as well as the
+      # browser. Without it the download succeeds and the LAUNCH fails, which reads as a
+      # broken test rather than a missing dependency.
+      #
+      # Chromium only, and that is already the config's choice rather than this file's:
+      # `playwright.config.ts`'s two projects are **`dark` and `light`**, both on
+      # `devices['Desktop Chrome']` — they vary the stored theme, not the engine, because
+      # these specs assert this product's own behaviour (ADR-012's palette included) and not
+      # cross-browser rendering. Installing three engines would triple the download for no
+      # additional claim; widening belongs in that config, not here.
+      - name: Install Playwright's browser
+        run: npx playwright install --with-deps chromium
+
+      # No `|| true`, no `continue-on-error`, and no `--pass-with-no-tests`: a gate that
+      # cannot fail is a gate that is not there, and this workflow's own header says a
+      # conditional that has become permanently true is indistinguishable from having no
+      # test at all.
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Keep the report when they fail
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7

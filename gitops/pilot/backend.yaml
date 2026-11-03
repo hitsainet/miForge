@@ -1,0 +1,676 @@
+# miForge backend pod: the API plus one Celery worker container per queue (ADR-006,
+# ADR-008, ADR-019; foundation tasks 8.5 and 8.7).
+#
+# All five containers run ONE image, `hitsai/miforge-backend`; the `command:` picks the
+# process. Image tag/digest is managed by ArgoCD Image Updater through the kustomization
+# `images` entry and the `.argocd-source-miforge.yaml` pin file it commits to
+# gitops/pilot — DO NOT hand-edit tags here.
+#
+# ── ⚠⚠ THE GPU: NO `nvidia.com/gpu` REQUEST ANYWHERE IN THIS FILE ⚠⚠ ──────────────
+# Foundation task 8.7, and the single thing most likely to be "corrected" by someone who
+# knows how Kubernetes GPU scheduling normally works. It is deliberate, it matches miLLM
+# and miStudio, and the reason is recorded in miLLM's own manifest under the heading
+# **"EVERY GPU ON THE NODE, NOT ONE"**:
+#
+#   miLLM's backend used to request `nvidia.com/gpu: 1`, which makes the device plugin
+#   hand the container exactly one card chosen by UUID. When the node gained a second
+#   GPU (an RTX 3080 Ti beside the 3090) miLLM could see ONLY the 3080 Ti.
+#
+# So visibility comes from the node's default nvidia runtime via `NVIDIA_VISIBLE_DEVICES`
+# and the pod stays on the GPU node by `nodeSelector`. A request here would ALSO FAIL TO
+# SCHEDULE alongside the siblings: the stock device plugin allocates whole GPUs, and
+# miLLM and miStudio already run on that node without requesting any — so the one card
+# is unallocated as far as the scheduler knows, and a pod that asks for it is the only
+# one that could be refused.
+#
+# (AGENT.md records this argument being got wrong in the other direction too: "two pods
+# each requesting nvidia.com/gpu: 1 could not both schedule" was asserted as the reason
+# against co-tenancy, when NO POD ON THIS CLUSTER REQUESTS IT AT ALL. The manifests were
+# checked; the general truth about Kubernetes did not apply here.)
+#
+# `NVIDIA_DRIVER_CAPABILITIES: compute,utility` is on EVERY container including the API,
+# and `utility` is the load-bearing half: it is what mounts `nvidia-smi`, and ADR-008
+# resolves a device by UUID **from live `nvidia-smi -L` at SUBMIT time** — which happens
+# in the API process, not the worker. An API container without `utility` would refuse
+# every run with `nvidia_smi_unavailable` on a node that has a perfectly good card.
+#
+# `CUDA_DEVICE_ORDER: PCI_BUS_ID` because CUDA's default is FASTEST_FIRST, which can
+# disagree with NVML's PCI-bus numbering — so `cuda:N` and the card `nvidia-smi` calls N
+# are two different cards. The indices on this node inverted once between boots. The
+# index is only ever re-derived at the moment of masking; the UUID is what is recorded.
+#
+# ── SECRETS come from `miforge-secrets`, created out of band (see postgres.yaml) ───
+# DATABASE_URL is composed from POSTGRES_PASSWORD by Kubernetes' $(VAR) expansion, which
+# only sees variables defined EARLIER IN THE SAME LIST — keep POSTGRES_PASSWORD above
+# DATABASE_URL in every container below.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miforge-backend
+  namespace: miforge
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate. Two reasons, and the first is correctness:
+  #   * ONE RUN PER CARD, enforced by a GPU lease (ADR-008, task 6.7). A rolling update
+  #     would briefly run two `train` workers, and the second would find the lease held
+  #     — a loud refusal, but a pointless one on every deploy.
+  #   * The old pod must release VRAM before the new one allocates, which is miLLM's
+  #     stated reason for Recreate and applies identically here with one card.
+  #
+  # ⚠ A ROLLOUT STOPS EVERY WORKER IN THIS POD AND NOTHING REQUEUES A RUNNING STEP. A
+  # solo-pool worker cannot requeue the task it is executing. So a deploy costs up to
+  # `save_every` steps of training — check for running runs before deploying.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: miforge-backend
+  template:
+    metadata:
+      labels:
+        app: miforge-backend
+    spec:
+      # PINNED, for two independent reasons that happen to agree: the GPU is on this
+      # node, and the artifact volumes are node-affine local volumes. Either alone
+      # would require the pin.
+      #
+      # ⚠ Unpinned, with a plain hostPath, a pod placed elsewhere comes up HEALTHY
+      # against an empty directory — miLLM's postgres did exactly that after a reboot
+      # on 2026-08-30, and Neuronpedia sat broken for 19 days on the same failure. The
+      # `nodeAffinity` on each PV in `storage.yaml` is the belt to this braces.
+      nodeSelector:
+        kubernetes.io/hostname: mcs-lnxhost02
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      # How long a stopping pod's workers get before the kubelet SIGKILLs them.
+      #
+      # ⚠ A LONGER GRACE WOULD NOT SAVE A LONG RUN, so do not raise it hoping it will.
+      # Cancellation is cooperative at a step boundary (ADR-006), a solo worker cannot
+      # requeue the step it is running, and `Recreate` waits the WHOLE grace on every
+      # deploy. miStudio reached the same conclusion from the same constraints.
+      terminationGracePeriodSeconds: 60
+      # The kubelet creates a DirectoryOrCreate hostPath root-owned and the app runs as
+      # uid 10001. This root init container hands each volume root to 10001; the
+      # application creates anything below them itself.
+      initContainers:
+        - name: data-volume-owner
+          image: busybox:1.37
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              for d in /data/checkpoints /data/trainer-state /data/runs /data/parts /data/packs /data/hf-cache; do
+                mkdir -p "$d"
+                # Only the ROOT of each volume, not `-R`. A recursive chown over a
+                # checkpoint tree that may hold hundreds of gigabytes would add minutes
+                # to every pod start, and the contents are already 10001's.
+                chown 10001:10001 "$d"
+              done
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /data/checkpoints
+            - name: trainer-state
+              mountPath: /data/trainer-state
+            - name: runs
+              mountPath: /data/runs
+            - name: parts
+              mountPath: /data/parts
+            # ⚠ ADDED 2026-10-14 with the volume itself. `packs/settings.py` mkdirs this
+            # ON DEMAND, which is right for a writer and wrong on a read path — reindex
+            # already hit that and `PermissionError` aborted the whole operation. Without
+            # the chown here the directory is created root-owned by the kubelet and the
+            # process (uid 10001) cannot write a `pack.json` at all.
+            - name: packs
+              mountPath: /data/packs
+            - name: hf-cache
+              mountPath: /data/hf-cache
+
+        # ── ⚠ THE SCHEMA, WHICH NOTHING IN THIS CLUSTER MIGRATED UNTIL 2026-10-14 ──
+        #
+        # This container is the GitOps half of a fix that had only been made for Compose.
+        # `docker-compose.yml` gained a one-shot `migrate` service the same day and its
+        # own comment claimed the shapes agreed:
+        #
+        #   "it is the shape Kubernetes wants too (an init container or a Job), so the
+        #    compose path and the GitOps path stay the same story rather than diverging."
+        #
+        # They had diverged. `backend/Dockerfile` deliberately has NO `SERVICE_TYPE`
+        # entrypoint ("one fewer file to keep in step"), unlike miStudio's and
+        # miDataworks', whose entrypoints run `alembic upgrade head` for `api` before
+        # uvicorn. So miForge's API container runs the Dockerfile `CMD` — uvicorn, and
+        # nothing else — and **no process in this pod ran a migration.**
+        #
+        # ⚠ THE FAILURE MODE IS THE WORST PAIR AVAILABLE: GREEN HEALTH, DEAD API. The
+        # readiness probe hits `/api/health`, which checks postgres CONNECTIVITY, not
+        # schema, so a fresh namespace reports **ok** while every data endpoint returns
+        # 500 with `relation "mf_runs" does not exist`. That is not predicted, it is
+        # OBSERVED — the operator hit exactly it on a cold `docker compose up` on
+        # 2026-10-14 (`test_compose_is_a_deploy_path.py`, defect 3).
+        #
+        # ── WHY AN INIT CONTAINER AND NOT A JOB OR AN ARGOCD PreSync HOOK ──────────
+        #  * An init container runs to completion before ANY app container starts, so the
+        #    API cannot serve against an unmigrated schema. That is `depends_on:
+        #    service_completed_successfully` expressed in Kubernetes, which is what the
+        #    compose file said it wanted.
+        #  * It cannot race. `replicas: 1` plus `strategy: Recreate` means exactly one of
+        #    these ever runs — the same guarantee that makes exactly one Beat safe.
+        #    Parallel migration of one database is measured in `backend-tests.yml` as 29
+        #    errors against 458 passed serially, so "cannot race" is load-bearing.
+        #  * A `PreSync` hook would need `prune` semantics ArgoCD's Application
+        #    deliberately does not enable, and a bare Job leaves the API free to start
+        #    beside it — which is the bug, not the fix.
+        #  * On failure the kubelet restarts THIS CONTAINER with backoff and the pod sits
+        #    `Init:Error`. Loud and diagnosable, and the API never serves. A migration
+        #    that fails must stop the deploy, not be survived by it.
+        #
+        # `alembic upgrade head` is idempotent, so a restart re-runs it harmlessly.
+        #
+        # ── ⚠ BOUNDED, AND IT NAMES ITS BLOCKER (miStudio's incident of 2026-10-21) ──
+        # The command is `python -m db.migrate upgrade`, not a bare `alembic upgrade head`.
+        # miStudio's ALTER waited forever behind a hung COPY's lock; here the same wait would
+        # have left this pod in `Init` INDEFINITELY, every container down, nothing in the log.
+        # Now (backend/src/db/migration_safety.py, PostgreSQL only): lock_timeout 15 s,
+        # statement_timeout 150 s, idle_in_transaction_session_timeout 5 min,
+        # client_connection_check_interval 2 s (a killed attempt leaves no ALTER queued),
+        # application_name=miforge-migrate; a second connection logs who blocks the migration
+        # (pid, application, user, state, transaction age, query) and the
+        # `pg_terminate_backend` to run; a lock timeout is retried with backoff inside a 180 s
+        # MIGRATION_DEADLINE, after which the run is cancelled server-side and this container
+        # EXITS NON-ZERO (3 blocked, 4 deadline/statement timeout). The kubelet then restarts
+        # it with backoff (10 s, 20 s, … 5 min) and the pod shows `Init:Error` /
+        # `Init:CrashLoopBackOff`: each restart is a fresh bounded attempt that names the
+        # blocker again. The Deployment sets no progressDeadlineSeconds (default 600 s): two
+        # whole bounded runs fit inside it, so the blocker is in the log before ArgoCD marks
+        # the rollout Degraded (backend/tests/integration/test_migration_lock_safety.py
+        # ::TestTheBudget reads both from this file).
+        #
+        # ⚠ `alembic.ini` AND `backend/alembic/` MUST BE IN THE IMAGE or this container
+        # exits non-zero and nothing starts. They were added to `backend/Dockerfile` on
+        # 2026-10-14 for the Compose fix; before that this container could not have
+        # worked either. `alembic.ini` sets `script_location = backend/alembic` and
+        # `prepend_sys_path = backend/src`, both RELATIVE, so they resolve against the
+        # image's WORKDIR `/app` exactly as against the repository root — which is why no
+        # `-c` flag and no `workingDir` override is needed here.
+        #
+        # `env.py` takes the URL from `core.config`, never from `alembic.ini`, so
+        # DATABASE_URL below is the single source of truth — and POSTGRES_PASSWORD must
+        # stay ABOVE it, because Kubernetes' `$(VAR)` expansion only sees variables
+        # defined earlier in the same list.
+        #
+        # No artifact volumes and no GPU env: a migration touches the database only.
+        # Withholding them is what makes that claim checkable rather than asserted, and
+        # it is the same reason `docker-compose.yml` excludes `migrate` from its
+        # artifact-volume list.
+        - name: migrate
+          image: hitsai/miforge-backend:latest
+          imagePullPolicy: Always
+          command: ["python", "-m", "db.migrate", "upgrade"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgresql+psycopg://miforge:$(POSTGRES_PASSWORD)@postgres:5432/miforge
+          envFrom:
+            - configMapRef:
+                name: miforge-config
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      containers:
+        # ── The API ───────────────────────────────────────────────────────────────
+        - name: api
+          image: hitsai/miforge-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgresql+psycopg://miforge:$(POSTGRES_PASSWORD)@postgres:5432/miforge
+            # See the file header: `utility` is what mounts `nvidia-smi`, which the API
+            # needs because ADR-008 resolves the device UUID at SUBMIT.
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: compute,utility
+            - name: CUDA_DEVICE_ORDER
+              value: PCI_BUS_ID
+            # §5.10's identity, OPTIONAL as on worker-train, and needed HERE TOO: the API is
+            # where `GET /models/sources` reports whether the attach mode is usable and where
+            # `POST /runs/define` runs its pre-flight, and both refuse
+            # `hot_update_identity_incomplete` when these are unset. Wired only to the train
+            # worker until 2026-10-17, so the mode read "unavailable" in the one place an
+            # operator looks and every attach submission was refused before reaching the
+            # worker that could have run it (found live, F11 14.3). The API never makes a
+            # gated call with the token; it only needs to know the identity is complete.
+            - name: MILLM_TRAINER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: MILLM_TRAINER_TOKEN
+                  optional: true
+            - name: MILLM_AUDIT_LABEL
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: MILLM_AUDIT_LABEL
+                  optional: true
+          envFrom:
+            - configMapRef:
+                name: miforge-config
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /data/checkpoints
+            - name: trainer-state
+              mountPath: /data/trainer-state
+            - name: runs
+              mountPath: /data/runs
+            - name: parts
+              mountPath: /data/parts
+            - name: packs
+              mountPath: /data/packs
+            - name: hf-cache
+              mountPath: /data/hf-cache
+            # D47: miLLM's checkpoint directory, READ-ONLY. An attached (hot-update) run's
+            # checkpoints are written there by miLLM; continue finds them through
+            # CHECKPOINT_READ_ROOTS. Never in the init container: nothing here may chown it.
+            - name: millm-checkpoints
+              mountPath: /data/millm-checkpoints
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          # NO livenessProbe on the API, deliberately. `/api/health` reports each
+          # dependency separately (task 5.2), so it can answer honestly that Postgres is
+          # down — and a liveness probe would then restart a process whose only fault is
+          # that it told the truth about something else.
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+
+        # ── Workers: ONE CONTAINER PER QUEUE (ADR-006) ────────────────────────────
+        # Four queues, four containers, so a long job in one never holds the slot
+        # another needs. miStudio learned this when one solo worker consumed every queue
+        # and a 12-hour pass sat in front of the very janitors that un-wedge stuck jobs.
+        #
+        # ⚠ EVERY WORKER IS `--pool=solo -c 1`, AND THE CONSEQUENCES ARE DESIGN INPUTS:
+        #   1. `revoke(terminate=True)` DOES NOT WORK — it signals a pool child, and the
+        #      solo pool has none; the task runs in the worker process itself. So
+        #      cancellation is COOPERATIVE, checked at a step boundary (task 6.3).
+        #   2. A BUSY SOLO WORKER NEVER READS THE CONTROL QUEUE. While a step runs it is
+        #      not listening, so nothing reaches a running job through Celery at all.
+        #      Reach a running job THROUGH THE DATABASE.
+        # Why solo at all: a training step owns a GPU, and a prefork pool would fork a
+        # process holding a CUDA context — a different and worse failure.
+        #
+        # `-A workers.celery_app:celery_app` names the ATTRIBUTE explicitly. Celery's
+        # `-A <module>` would find it by scanning the module for a Celery instance,
+        # because the attribute is `celery_app` rather than the `app` or `celery` Celery
+        # looks for by name — so the scan would be doing the work, and a second Celery
+        # instance appearing in that module later would make the choice arbitrary.
+        #
+        # ⚠ THE POOL AND CONCURRENCY ARE ALSO SET IN `workers/celery_app.py`'s
+        # configuration, not only here. That is deliberate and documented there: "a flag
+        # is a thing an operator can omit." The flags are kept anyway so that
+        # `kubectl describe pod` shows the actual guarantee rather than requiring a
+        # reader to go and find the Python.
+        - name: worker-train
+          # The GPU run loop. The only container that trains, and therefore the only one
+          # that holds the card's lease.
+          image: hitsai/miforge-backend:latest
+          imagePullPolicy: Always
+          command: ["celery", "-A", "workers.celery_app:celery_app", "worker",
+                    "--pool=solo", "-c", "1", "-Q", "train", "-n", "train@%h",
+                    "--loglevel=INFO"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgresql+psycopg://miforge:$(POSTGRES_PASSWORD)@postgres:5432/miforge
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: compute,utility
+            - name: CUDA_DEVICE_ORDER
+              value: PCI_BUS_ID
+            # ── §5.10 ONLY, AND OPTIONAL BY CONSTRUCTION (ADR-020, ADR-022) ───────
+            # `optional: true` is load-bearing: without it the Secret must carry these
+            # keys or EVERY pod fails to start, which would make the optional
+            # hot-update mode a hard requirement of the core product — the exact
+            # coupling the 2026-10-13 reframe removed.
+            #
+            # ⚠ A MISSING OR WRONG TOKEN FAILS QUIETLY AND AS THE WRONG DIAGNOSIS. The
+            # §5.10 heartbeat is gated on it, and a heartbeat rejected for a bad
+            # credential is indistinguishable from a dead trainer: miLLM marks the
+            # attachment stale and the run dies looking like a crash, one interval
+            # later, rather than loudly at attach.
+            - name: MILLM_TRAINER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: MILLM_TRAINER_TOKEN
+                  optional: true
+            - name: MILLM_AUDIT_LABEL
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: MILLM_AUDIT_LABEL
+                  optional: true
+          envFrom:
+            - configMapRef:
+                name: miforge-config
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /data/checkpoints
+            - name: trainer-state
+              mountPath: /data/trainer-state
+            - name: runs
+              mountPath: /data/runs
+            - name: parts
+              mountPath: /data/parts
+            - name: packs
+              mountPath: /data/packs
+            - name: hf-cache
+              mountPath: /data/hf-cache
+            # D47: miLLM's checkpoint directory, READ-ONLY. An attached (hot-update) run's
+            # checkpoints are written there by miLLM; continue finds them through
+            # CHECKPOINT_READ_ROOTS. Never in the init container: nothing here may chown it.
+            - name: millm-checkpoints
+              mountPath: /data/millm-checkpoints
+              readOnly: true
+          # NO probe of any kind on a worker. It serves no HTTP, and its liveness is the
+          # DATABASE HEARTBEAT the janitor reads (ADR-007, task 6.4) — the lesson from
+          # miStudio reaping a live 5.8-hour job as "worker lost" because its only sign
+          # of life was the socket.
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+
+        - name: worker-generate
+          # Self-generation and test-set generation. Separated from `train` because
+          # generation can dominate a short step (ADR-024) and must not sit in front of
+          # the step loop.
+          #
+          # It gets the GPU env too: ADR-009's default provider is IN-PROCESS, so a
+          # generation task on this queue may hold a model. Time-slicing, not MPS, is
+          # how the card is shared — which serialises kernels, so a generation-heavy
+          # source contends for the WHOLE GPU and any benchmark must measure under that
+          # contention.
+          image: hitsai/miforge-backend:latest
+          imagePullPolicy: Always
+          command: ["celery", "-A", "workers.celery_app:celery_app", "worker",
+                    "--pool=solo", "-c", "1", "-Q", "generate", "-n", "generate@%h",
+                    "--loglevel=INFO"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgresql+psycopg://miforge:$(POSTGRES_PASSWORD)@postgres:5432/miforge
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: compute,utility
+            - name: CUDA_DEVICE_ORDER
+              value: PCI_BUS_ID
+          envFrom:
+            - configMapRef:
+                name: miforge-config
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /data/checkpoints
+            - name: trainer-state
+              mountPath: /data/trainer-state
+            - name: runs
+              mountPath: /data/runs
+            - name: parts
+              mountPath: /data/parts
+            - name: packs
+              mountPath: /data/packs
+            - name: hf-cache
+              mountPath: /data/hf-cache
+            # D47: miLLM's checkpoint directory, READ-ONLY. An attached (hot-update) run's
+            # checkpoints are written there by miLLM; continue finds them through
+            # CHECKPOINT_READ_ROOTS. Never in the init container: nothing here may chown it.
+            - name: millm-checkpoints
+              mountPath: /data/millm-checkpoints
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+
+        - name: worker-default
+          # CRUD-shaped work and `reindex`. No GPU env: nothing on this queue touches a
+          # device, and withholding it is what makes that claim checkable rather than
+          # asserted — a task that tries will refuse by name (`nvidia_smi_unavailable`)
+          # instead of quietly succeeding on a card it should not be using.
+          image: hitsai/miforge-backend:latest
+          imagePullPolicy: Always
+          command: ["celery", "-A", "workers.celery_app:celery_app", "worker",
+                    "--pool=solo", "-c", "1", "-Q", "default", "-n", "default@%h",
+                    "--loglevel=INFO"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgresql+psycopg://miforge:$(POSTGRES_PASSWORD)@postgres:5432/miforge
+          envFrom:
+            - configMapRef:
+                name: miforge-config
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /data/checkpoints
+            - name: trainer-state
+              mountPath: /data/trainer-state
+            - name: runs
+              mountPath: /data/runs
+            - name: parts
+              mountPath: /data/parts
+            - name: packs
+              mountPath: /data/packs
+            - name: hf-cache
+              mountPath: /data/hf-cache
+            # D47: miLLM's checkpoint directory, READ-ONLY. An attached (hot-update) run's
+            # checkpoints are written there by miLLM; continue finds them through
+            # CHECKPOINT_READ_ROOTS. Never in the init container: nothing here may chown it.
+            - name: millm-checkpoints
+              mountPath: /data/millm-checkpoints
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+
+        - name: worker-maintenance
+          # The janitor and retention sweeps. ⚠ ITS OWN QUEUE IS NOT A TIDINESS
+          # PREFERENCE: the janitor is what un-wedges a stuck run, so it must never
+          # queue behind one. That is precisely the failure miStudio hit with a single
+          # worker consuming every queue.
+          #
+          # The janitor must distinguish LAPSED from SLOW (task 6.5). Its threshold is
+          # `JANITOR_LAPSE_SECONDS`, not the heartbeat interval — see `config.yaml`.
+          image: hitsai/miforge-backend:latest
+          imagePullPolicy: Always
+          command: ["celery", "-A", "workers.celery_app:celery_app", "worker",
+                    "--pool=solo", "-c", "1", "-Q", "maintenance", "-n", "maintenance@%h",
+                    "--loglevel=INFO"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgresql+psycopg://miforge:$(POSTGRES_PASSWORD)@postgres:5432/miforge
+          envFrom:
+            - configMapRef:
+                name: miforge-config
+          volumeMounts:
+            - name: checkpoints
+              mountPath: /data/checkpoints
+            - name: trainer-state
+              mountPath: /data/trainer-state
+            - name: runs
+              mountPath: /data/runs
+            - name: parts
+              mountPath: /data/parts
+            - name: packs
+              mountPath: /data/packs
+            - name: hf-cache
+              mountPath: /data/hf-cache
+            # D47: miLLM's checkpoint directory, READ-ONLY. An attached (hot-update) run's
+            # checkpoints are written there by miLLM; continue finds them through
+            # CHECKPOINT_READ_ROOTS. Never in the init container: nothing here may chown it.
+            - name: millm-checkpoints
+              mountPath: /data/millm-checkpoints
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+
+        - name: beat
+          # ⚠ WITHOUT THIS CONTAINER THE JANITOR NEVER RUNS, and nothing says so.
+          #
+          # `workers/celery_app.py` declares a `beat_schedule` with a `janitor-sweep`
+          # entry on the `maintenance` queue. A schedule with no beat process fires
+          # NEVER — the workers come up healthy, the queue stays empty, and lapsed runs
+          # accumulate as immortal rows with no error anywhere. The foundation backlog's
+          # task 8.x names no Beat container; this is here because task 6.1's schedule
+          # needs one.
+          #
+          # ⚠ EXACTLY ONE BEAT, EVER. Two would each schedule the sweep. That is
+          # guaranteed by `replicas: 1` plus `strategy: Recreate` above — which is
+          # miDataworks' stated reason for Recreate as well — and it is why Beat is NOT
+          # embedded with `worker --beat`: embedding ties the one scheduler's lifetime to
+          # one worker's, so a maintenance-worker restart silently skips a sweep window.
+          #
+          # No GPU env and no artifact volumes: Beat schedules, it never executes a task.
+          # Withholding them is what makes that claim checkable rather than asserted.
+          image: hitsai/miforge-backend:latest
+          imagePullPolicy: Always
+          command: ["celery", "-A", "workers.celery_app:celery_app", "beat",
+                    "--loglevel=INFO",
+                    # On the writable layer, not a volume, so EVERY RESTART STARTS FROM AN
+                    # EMPTY FILE. That file holds each entry's `last_run_at`, and Celery
+                    # sets a missing one to "now" (`ScheduleEntry.__init__`): an INTERVAL
+                    # entry is counted from beat's start, and one longer than the time
+                    # between redeploys never fires. (This comment used to say persisting
+                    # the file "buys nothing" - wrong for intervals; checkpoint-prune, a
+                    # 3,600 s interval, never ran on a pod rolled more often than hourly.)
+                    # So the file stays disposable and the schedule is made restart-safe
+                    # instead: short intervals only (janitor 60 s, chain sweep 120 s, each
+                    # delayed one interval by a restart), anything longer a wall-clock
+                    # `crontab` (checkpoint-prune: minute 0 hourly). Pinned by
+                    # `backend/tests/unit/test_beat_survives_restarts.py`.
+                    "--schedule=/tmp/celerybeat-schedule"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgresql+psycopg://miforge:$(POSTGRES_PASSWORD)@postgres:5432/miforge
+          envFrom:
+            - configMapRef:
+                name: miforge-config
+          securityContext:
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+
+      volumes:
+        # All four claims are created by `storage.yaml`, APPLIED BY HAND — it is
+        # deliberately not in the kustomization, because ArgoCD selfHeal reconciling a
+        # data-bearing volume is how a database gets deleted by a sync. If a claim is
+        # absent this pod sits Pending, which is the intended failure: louder than a
+        # DirectoryOrCreate hostPath coming up healthy against an empty directory.
+        - name: checkpoints
+          persistentVolumeClaim:
+            claimName: miforge-checkpoints
+        - name: trainer-state
+          persistentVolumeClaim:
+            claimName: miforge-trainer-state
+        # Run logs: the authoritative record (ADR-004). Claim in storage.yaml - apply it
+        # BEFORE a manifest referencing it reaches the cluster, or the pod sits Pending.
+        - name: runs
+          persistentVolumeClaim:
+            claimName: miforge-runs
+        - name: parts
+          persistentVolumeClaim:
+            claimName: miforge-parts
+        # The fourth artifact root. Its claim is in `storage.yaml` like the others, so an
+        # unapplied `storage.yaml` leaves this pod Pending rather than letting it come up
+        # and discard packs - which is the intended failure.
+        - name: packs
+          persistentVolumeClaim:
+            claimName: miforge-packs
+        - name: hf-cache
+          persistentVolumeClaim:
+            claimName: miforge-hf-cache
+        # D47 (2026-10-18): miLLM's checkpoints, read-only (claim in storage.yaml; the PV is
+        # a Retain hostPath on miLLM's directory - deleting the claim never touches it).
+        - name: millm-checkpoints
+          persistentVolumeClaim:
+            claimName: miforge-millm-checkpoints
+            readOnly: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # ⚠ THE NAME IS LOAD-BEARING. `frontend/nginx.conf` proxies `/api/` and `/socket.io/`
+  # to `http://miforge-backend:8000` with one literal hostname, so the same config file
+  # works in the cluster and under docker-compose (where the backend service carries
+  # `miforge-backend` as a network alias). Renaming this Service breaks the frontend
+  # with "host not found in upstream" at nginx start.
+  name: miforge-backend
+  namespace: miforge
+spec:
+  selector:
+    app: miforge-backend
+  ports:
+    - port: 8000
+      targetPort: 8000

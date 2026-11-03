@@ -1,0 +1,342 @@
+name: Backend Tests
+
+# The WHOLE backend test tree, on every push and pull request, against BOTH engines
+# (foundation task 1.2; ADR-016, ADR-023).
+#
+# ⚠ THIS FILE IS WHAT THE MIRROR TRUSTS (operator directive, 2026-10-20). The mirror's
+# image build no longer re-runs it: sync-to-clean.yml's `gate` publishes a snapshot only
+# after this workflow - lint, every shard of both engines (the `all-shards` job) - passed
+# for that exact commit. The gate finds it by FILE NAME and the aggregator by the job id
+# `all-shards`; backend/tests/unit/test_private_ci_trust.py pins both.
+#
+# Modelled on miLLM's `backend-tests.yml`, with the two defects miDataworks removed from
+# its own copy of the same file. Both are the same shape — a filter that makes a green
+# tick mean less than it looks:
+#
+# * NO `paths:` FILTER. miLLM's carries `millm/**`, `tests/**`, `pyproject.toml`, so a
+#   push outside those paths produces NO RUN AT ALL — and the image gate then has
+#   nothing to read. miLLM paid for that with ~70 lines of fallback logic in its gate
+#   (find the most recent commit that does have a result, prove no backend source has
+#   changed since) written after the missing-run branch deadlocked the backend image.
+#   Running on every push costs a few runner-minutes and makes the gate a one-liner.
+# * NO `--ignore`, `-m` or `-k` ON THE PYTEST COMMAND. miLLM runs `pytest tests/unit/`
+#   with eight `--ignore=` flags; miStudio's CI was red for a week over a stale test
+#   outside the directory it ran. Both jobs below run the whole tree.
+#   (`pyproject.toml`'s `addopts` already deselects the `gpu` and `upstream` markers —
+#   that is a capability statement about the runner, not a scope exclusion, and it is
+#   declared in one place rather than repeated here.)
+#
+# It runs on the private primary AND again on the public mirror; since 2026-10-20 the
+# mirror run is informational (nothing waits on it). Checked
+# that it can: no test in this suite reads a path the mirror strips, and the schema-sync
+# test skips with its obligation NAMED when a sibling checkout is absent, which it
+# always is here.
+#
+# NO GPU in either job. The runner has no card and must not need one: ADR-023 makes "a
+# developer without a GPU can run everything except a training step" a requirement on
+# the layout. A test that needs a device carries the `gpu` marker and is deselected.
+#
+# ── ⚠ WHY TWO JOBS, AND WHY ONE OF THEM IS SERIAL ─────────────────────────────────
+# `backend/tests/support/db.py` defaults to SQLite so the suite runs on a laptop with no
+# service, and reads `MIFORGE_TEST_DATABASE_URL` to run the same tests against the
+# engine production uses. Its docstring records the limitation honestly: "a
+# PostgreSQL-only type or a JSONB operator would pass here and fail there." So both
+# engines are run, because either alone is a known blind spot.
+#
+# They are separate jobs because the PostgreSQL one CANNOT BE RUN IN PARALLEL as the
+# support module stands. MEASURED, not assumed: `pytest -n auto --dist loadfile` with
+# `MIFORGE_TEST_DATABASE_URL` pointing at one database gives **29 errors and 1 failure**,
+# and the identical command serially gives **458 passed**. The cause is that every xdist
+# worker migrates, seeds and downgrades THE SAME database concurrently — the support
+# module takes a single URL and has no per-worker suffix. miDataworks hit this and solved
+# it on the support side ("each xdist worker provisions its own `_gwN` copy from this
+# URL"); miForge's support module could do the same, and until it does, serial here is
+# the honest configuration. The whole tree takes about 9 s serially, so this costs
+# nothing worth optimising.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Lint and types: Ruff, Black and MyPy strict (ADR-018; suite tracker 4.27) ─────
+  # IN THIS WORKFLOW ON PURPOSE. `docker-images.yml` gates the image build on the
+  # conclusion of the workflow named "Backend Tests", so a lint failure here blocks an
+  # image exactly as a test failure does. A separate workflow nothing waits on is how
+  # `docs-check` sat red for three commits (AGENT.md).
+  #
+  # Python 3.13, the same interpreter as MyPy's `python_version`, the other jobs and the
+  # image's base (operator decision 2026-10-21; it was 3.11 everywhere until then). Keep
+  # them in step: pyproject.toml's MyPy section records what a mismatch did. The tool
+  # versions are pinned in the `dev` extra so a new linter release cannot turn this red
+  # without a commit.
+  #
+  # The tree was made clean BEFORE this job was added: 740 Ruff errors (652 of them N802
+  # objecting to the deliberate shouting test names, now per-file-ignored for tests), 47
+  # files Black would reformat, and 35 MyPy errors. A gate added over a red tree is a gate
+  # someone switches off.
+  lint:
+    name: Lint and types (Ruff, Black, MyPy strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+
+      - name: Install PyTorch (CPU)
+        # MyPy reads torch's inline types, so it must be installed - and, as in the jobs
+        # below, at pyproject's exact pin or pip replaces it with CUDA.
+        # `--no-deps`: torch's own dependencies come from `constraints.txt` in the next
+        # step, from PyPI, exactly as the image takes them (deps sync 2026-10-21).
+        run: pip install --no-deps "torch==2.14.1" --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install the package with dev dependencies
+        # Then refuse the run if anything installed is unpinned or off the lock's version.
+        run: |
+          pip install -c constraints.txt -e ".[dev]"
+          python backend/scripts/check_installed_matches_lock.py constraints.txt
+
+      - name: Ruff
+        run: ruff check backend/src backend/tests
+
+      - name: Black
+        run: black --check backend/src backend/tests
+
+      - name: MyPy (strict)
+        run: mypy
+
+  # ── SHARDED (operator directive, 2026-10-20) ─────────────────────────────────────────
+  # Both engine jobs split the tree across SHARDS by file (`CI_SHARD`, read by
+  # backend/tests/conftest.py's `pytest_ignore_collect`; backend/tests/support/ci_shard.py
+  # balances the split on recorded per-file durations). The pytest commands are unchanged
+  # - no path, `--ignore`, `-m` or `-k` - and together each job's shards run the whole
+  # tree, each file exactly once (backend/tests/unit/test_ci_shards.py proves it against
+  # pytest's own collection). `all-shards` below is green only when every shard of both
+  # engines is. The PostgreSQL shards stay serial: each shard is its own runner with its
+  # own database, so the per-worker-database limitation below is not touched.
+  # test_private_ci_trust.py pins the matrices, CI_SHARD and the aggregator.
+
+  # ── The whole tree, in parallel, on the default engine ────────────────────────────
+  test:
+    name: Whole tree (SQLite, parallel) shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+
+    services:
+      redis:
+        # ADR-003: Redis 7, broker and progress channel, never a store of record.
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      CI_SHARD: ${{ matrix.shard }}/2
+      # Bare names: `core/config.py` reads these fields with no `env_prefix`. Keep this
+      # list and that file in step — a key with no field is ignored silently
+      # (`extra="ignore"`), which is the quiet half of a typo.
+      REDIS_URL: redis://localhost:6379/15
+      ENVIRONMENT: ci
+      # Artifact roots under the runner's writable temp space, not the `/data/*`
+      # production defaults, which do not exist here and are not creatable.
+      CHECKPOINT_ROOT: /tmp/miforge-ci/checkpoints
+      TRAINER_STATE_ROOT: /tmp/miforge-ci/trainer-state
+      PARTS_ROOT: /tmp/miforge-ci/parts
+      # ⚠ `MIFORGE_TEST_DATABASE_URL` DELIBERATELY UNSET HERE. Unset means the suite's
+      # own default engine — SQLite — which is the configuration every developer runs,
+      # so this job is what proves the laptop path stays working. The `postgres` job
+      # below covers the other engine.
+      #
+      # ⚠ MILLM_BASE_URL, MIDATAWORKS_BASE_URL and MILLM_TRAINER_TOKEN DELIBERATELY
+      # UNSET. Unset means absent-and-normal (ADR-010), and the standalone test (task
+      # 1.7, BRD acceptance criterion 20) asserts the API comes up with each integration
+      # reported unconfigured BY NAME. Setting either would silently take that test off
+      # the path it exists to pin.
+      #
+      # ⚠ MIFORGE_MILLM_ROOT / MIFORGE_MIDATAWORKS_ROOT DELIBERATELY UNSET. They point
+      # the schema-sync test at a sibling checkout, and no sibling is checked out here —
+      # so each vendored contract SKIPS WITH ITS OBLIGATION NAMED rather than passing
+      # silently. Pointing either at a wrong path turns a clean skip into a red that says
+      # nothing true.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          # The shipped version and `requires-python`'s floor (`>=3.13`), so the suite
+          # runs on the interpreter `backend/Dockerfile` publishes (python:3.13-slim).
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+
+      - name: Install PyTorch (CPU)
+        run: |
+          # Keeps the multi-gigabyte CUDA build off the runner.
+          #
+          # ⚠ THE SPEC MUST SATISFY pyproject.toml's PIN (`torch==2.14.1`). miLLM
+          # pinned this step BELOW its own floor, so the very next step found the
+          # constraint unsatisfied, uninstalled this CPU wheel, and pulled full CUDA
+          # torch plus the nvidia-* stack — exhausting the disk with "[Errno 28] No
+          # space left on device" before a single test ran. A pre-install pinned below
+          # the floor is not a smaller install; it is a wasted download followed by the
+          # big one.
+          #
+          # ⚠ `--no-deps` AND THE EXACT PIN (deps sync 2026-10-21). The CPU index serves its
+          # own copies of torch's dependencies (filelock, fsspec, networkx, ...), at versions
+          # the image - which installs from PyPI - never sees. With `--no-deps` only torch
+          # comes from here; everything else is installed in the next step from PyPI under
+          # `-c constraints.txt`, the lock the image installs with. `2.14.1+cpu` satisfies
+          # the lock's `torch==2.14.1`, so pip keeps it rather than pulling the CUDA wheel.
+          pip install --no-deps "torch==2.14.1" --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install the package with dev dependencies
+        # Then refuse the run if anything installed is unpinned or off the lock's version.
+        # torch is imported only HERE: with `--no-deps` above, its own dependencies
+        # (typing_extensions, filelock, ...) arrive in this step, so an import in the
+        # previous step fails with ModuleNotFoundError (CI, 2026-10-22, b901c6b).
+        run: |
+          pip install -c constraints.txt -e ".[dev]"
+          python backend/scripts/check_installed_matches_lock.py constraints.txt
+          python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
+
+      # `bitsandbytes` (the `[bnb]` extra) is deliberately NOT installed: it has no
+      # pure-CPU wheel on every platform, and nothing runnable here needs 8-bit
+      # optimizer states. Anything that does carries the `gpu` marker.
+
+      - name: Run the whole backend test tree
+        # No path, no `--ignore`, no `-m`, no `-k`. `--dist loadfile` keeps a module's
+        # tests on one worker, which the filesystem-fixture tests need.
+        run: pytest -n auto --dist loadfile
+
+  # ── The whole tree, serially, against the engine production runs ─────────────────
+  postgres:
+    name: Whole tree (PostgreSQL 15, serial) shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+
+    services:
+      postgres:
+        # ADR-003's major version. A suite run only on a different major cannot see a
+        # migration that fails on the one we deploy.
+        image: postgres:15
+        env:
+          POSTGRES_USER: miforge
+          POSTGRES_PASSWORD: miforge-ci
+          POSTGRES_DB: miforge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U miforge -d miforge_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      CI_SHARD: ${{ matrix.shard }}/3
+      DATABASE_URL: postgresql+psycopg://miforge:miforge-ci@localhost:5432/miforge_test
+      REDIS_URL: redis://localhost:6379/15
+      ENVIRONMENT: ci
+      CHECKPOINT_ROOT: /tmp/miforge-ci/checkpoints
+      TRAINER_STATE_ROOT: /tmp/miforge-ci/trainer-state
+      PARTS_ROOT: /tmp/miforge-ci/parts
+      # ⚠ THIS, not DATABASE_URL, IS WHAT THE SUITE READS FOR ITS OWN DATABASE, and the
+      # two are separate on purpose. `backend/tests/support/db.py`'s docstring names this
+      # variable and says "which CI's backend-tests.yml will do". Omit it and this job
+      # tests against SQLite while a PostgreSQL service runs beside it for nothing.
+      MIFORGE_TEST_DATABASE_URL: postgresql+psycopg://miforge:miforge-ci@localhost:5432/miforge_test
+      # A PASSWORD IS SET ON PURPOSE, AND IT IS NOT INCIDENTAL.
+      # `POSTGRES_HOST_AUTH_METHOD: trust` would make this job greener and weaker: a
+      # test that reconstructs a connection URL from `str(engine.url)` gets SQLAlchemy's
+      # MASKED form (`miforge:***@...`), which authenticates fine under trust and fails
+      # under password auth. Trust here would hide that class of bug rather than find it.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+
+      - name: Install PyTorch (CPU)
+        run: |
+          # Same spec as the other job, for the same reason: it must equal the
+          # pyproject pin or pip replaces it with the CUDA build.
+          pip install --no-deps "torch==2.14.1" --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install the package with dev dependencies
+        # Then refuse the run if anything installed is unpinned or off the lock's version.
+        run: |
+          pip install -c constraints.txt -e ".[dev]"
+          python backend/scripts/check_installed_matches_lock.py constraints.txt
+
+      - name: Run the whole backend test tree against PostgreSQL
+        # ⚠ SERIAL, AND NOT A PERFORMANCE CHOICE. See this file's header: with
+        # `-n auto` every xdist worker migrates and downgrades the SAME database, which
+        # measured 29 errors against 458 passed serially. Add `-n` back only together
+        # with a per-worker database in `backend/tests/support/db.py`.
+        run: pytest
+
+  # The single verdict for every shard of both engines: green only if each one is. A shard
+  # that failed, was cancelled or never ran makes this red (a matrix job's `result` is
+  # `success` only when every leg succeeded). sync-to-clean's gate requires THIS job by
+  # name, so the mirror never receives a commit on a partial set of shards.
+  all-shards:
+    name: all shards
+    needs: [test, postgres]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every shard to have passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          jq -e 'length > 0 and all(.[]; .result == "success")' <<< "$RESULTS" > /dev/null

@@ -1,0 +1,131 @@
+{
+  "kind": "midataworks.dataset-version",
+  "schema_version": "1",
+  "producer": {
+    "app": "miDataworks",
+    "build": "dev",
+    "generated_at": "2026-10-07T12:00:00Z"
+  },
+  "version": {
+    "dataset": "humor-format-balanced",
+    "version_id": "7b5d1d0e-0000-4000-8000-000000000001",
+    "number": 2,
+    "parent_version_id": null,
+    "created_at": "2026-10-05T09:30:00Z",
+    "created_by_origin": "operator",
+    "recipe": {
+      "format": "dw.recipe/v1",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "seed": 20261005,
+    "row_key_scheme": "dw.rowkey/v1"
+  },
+  "target": {
+    "kind": "dataset",
+    "dataset_target_type": "detector",
+    "trl_type": null,
+    "trl_version": null,
+    "detector_role": null,
+    "miforge_set_kind": null,
+    "contract_reference": null
+  },
+  "sources": [
+    {
+      "source_id": "src-colbert",
+      "origin": {
+        "kind": "hub",
+        "repo_id": "CreativeLang/ColBERT_Humor_Detection",
+        "config": null,
+        "split": null,
+        "revision": "2bb7d6bce15e42c2a3cf2be8305fa3049929d3ac"
+      },
+      "licence": {
+        "displayed": "cc-by-2.0",
+        "raw": "cc-by-2.0",
+        "origin": "card_data",
+        "licence_class": "permits_redistribution",
+        "table_version": 1
+      },
+      "terms_status": "not_recorded",
+      "gated": false,
+      "extensions": {}
+    }
+  ],
+  "content": {
+    "content_kind": "rows",
+    "columns": [
+      {
+        "name": "text",
+        "arrow_type": "string",
+        "role": "content",
+        "semantic": "text",
+        "label_values": null,
+        "extensions": {}
+      },
+      {
+        "name": "label",
+        "arrow_type": "string",
+        "role": "metadata",
+        "semantic": "label",
+        "label_values": [
+          "humorous",
+          "not_humorous"
+        ],
+        "extensions": {}
+      }
+    ],
+    "splits": [
+      {
+        "name": "train",
+        "path": "data/train.parquet",
+        "rows": 2208,
+        "bytes": 181234,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "logical_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "label_counts": {
+          "humorous": 1104,
+          "not_humorous": 1104
+        },
+        "held_out": false,
+        "evaluation_only": false,
+        "extensions": {}
+      },
+      {
+        "name": "test",
+        "path": "data/test.parquet",
+        "rows": 244,
+        "bytes": 20871,
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "logical_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "label_counts": {
+          "humorous": 122,
+          "not_humorous": 122
+        },
+        "held_out": true,
+        "evaluation_only": false,
+        "extensions": {}
+      }
+    ],
+    "projection": {
+      "label_resolver": "dw.effective-label/v1",
+      "label_column": "label",
+      "omitted_excluded": 0,
+      "omitted_flagged_unresolved": 0,
+      "overrides_applied": 0
+    },
+    "labelers": [],
+    "calibration": []
+  },
+  "caveats": [
+    {
+      "code": "amber_check",
+      "severity": "amber",
+      "message": "C-5: no completed audit sample is recorded for this version.",
+      "detail": {
+        "check": "C-5"
+      }
+    }
+  ],
+  "publication": null,
+  "extensions": {}
+}

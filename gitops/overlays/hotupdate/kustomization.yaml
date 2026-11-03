@@ -1,0 +1,14 @@
+# PREVIEW ONLY — the deployed manifests with the hostIPC component applied (suite D1).
+#
+#     kubectl kustomize gitops/overlays/hotupdate
+#
+# ⚠ Do not point the ArgoCD Application here: see `gitops/components/hostipc/` for why
+# (Image Updater's pin file is keyed on the Application's path) and for how to enable it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../pilot
+
+components:
+  - ../../components/hostipc

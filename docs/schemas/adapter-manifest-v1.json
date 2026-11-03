@@ -1,0 +1,288 @@
+{
+  "$defs": {
+    "AdapterBase": {
+      "additionalProperties": false,
+      "description": "The base model an adapter is bound to. An adapter applied to a different base produces undefined behaviour rather than a worse answer, which is why miLLM refuses the mismatch instead of warning.",
+      "properties": {
+        "manifest_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of the base checkpoint's manifest, so the exact base stays identifiable if its directory moves. Null when the base was not itself a saved checkpoint.",
+          "title": "Manifest Sha256"
+        },
+        "name": {
+          "description": "The base's fully qualified name. TWO CASES, and both are defined because the sibling field permits both:\n\n1. The base IS a saved checkpoint -> its own checkpoint manifest's 'name'.\n2. The base is a Hugging Face Hub model -> THE HUB REPO ID, e.g. 'LiquidAI/LFM2.5-1.2B-Instruct'. 'manifest_sha256' is null in this case, which is what distinguishes it.\n\nA consumer resolves the base in that order: by 'manifest_sha256' when it is present (the exact base, even if its directory moved), otherwise by matching this name against a registered repo id, otherwise against a row name.\n\nCase 2 was ADDED 2026-10-14, raised by the miLLM session implementing adapter serving. The previous wording defined this field only as 'as its own checkpoint manifest's name gives it' - which presupposes the base is a saved checkpoint, while 'manifest_sha256' immediately below it says 'null when the base was not itself a saved checkpoint'. So THIS OBJECT EXPLICITLY ADMITTED A HUB BASE AND THEN GAVE ITS name FIELD NO DEFINED VALUE for that case - and a standalone adapter trained on a Hub model is the ordinary case, not an edge one. Same shape as the fields this project has repeatedly found asserted against a source that did not support them, caught here by a consumer trying to implement the match rather than by re-reading the schema.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "AdapterBase",
+      "type": "object"
+    },
+    "AdapterConfig": {
+      "additionalProperties": false,
+      "description": "The low-rank adapter's shape and how it is applied. Rank, alpha, target modules and dropout are run configuration (BRD-02 R-02.43).",
+      "properties": {
+        "alpha": {
+          "description": "LoRA alpha.",
+          "exclusiveMinimum": 0,
+          "title": "Alpha",
+          "type": "number"
+        },
+        "dropout": {
+          "default": 0.0,
+          "description": "Dropout applied to the adapter during training. Recorded because it changes what was trained, not what is served.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Dropout",
+          "type": "number"
+        },
+        "rank": {
+          "description": "LoRA rank r.",
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "scaling": {
+          "default": "alpha_over_r",
+          "description": "How the adapter's contribution is scaled at apply time. 'alpha_over_r' means alpha divided by rank, the PEFT default. This field exists so a different rule (for example rank-stabilised scaling) is expressible in a later schema version without changing what v1 means: a reader that does not recognise the value MUST refuse the adapter rather than guess, because guessing the scale silently changes the model's behaviour.",
+          "enum": [
+            "alpha_over_r"
+          ],
+          "title": "Scaling",
+          "type": "string"
+        },
+        "target_modules": {
+          "description": "Module paths the adapter was attached to, as the model names them. miLLM refuses an adapter whose target modules or shapes do not match the resident base (BRD-01 R-01.27), and this is the field it checks against.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Target Modules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rank",
+        "alpha",
+        "target_modules"
+      ],
+      "title": "AdapterConfig",
+      "type": "object"
+    },
+    "AdapterManifestV1": {
+      "additionalProperties": false,
+      "description": "The manifest written beside an adapter's tensors by every adapter save (BRD-02 R-02.44). miForge owns this schema and is normative for it; miLLM vendors it byte-identical with a sync test (BRD-01 R-01.28) because it serves adapters (R-01.27). This is deliberately NOT the checkpoint manifest: that schema's fields describe a full parameter set, and an adapter is a different artifact with a mandatory base.\n\nON-DISK LAYOUT IS NORMATIVE. An adapter directory contains THREE files: 'adapter_model.safetensors' (the tensors), 'adapter_config.json' (PEFT's own configuration) and 'adapter_manifest.json' (this document).\n\n'adapter_config.json' was ADDED 2026-10-14 and its absence was a defect, not a simplification: PeftConfig.from_pretrained READS THAT FILE, so a directory matching the previously-enumerated layout exactly was NOT loadable by the standard tooling R-02.51 promises, and BRD acceptance criterion 15 could not pass. It is the same shape as the tokenizer-subdirectory defect - an artifact layout that satisfied this suite's own prose and no actual loader - and the third time the adapter path had produced one. Found by checking the layout against what `peft` reads rather than by re-reading the layout. This document remains additive: it is miForge's record beside PEFT's, never a replacement for it. Tensor keys follow the PEFT convention, 'base_model.model.<module>.lora_A.weight' and '.lora_B.weight', so an adapter is loadable by standard tooling and not only by this suite.",
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/AdapterConfig",
+          "description": "The adapter's shape and scaling rule."
+        },
+        "base": {
+          "$ref": "#/$defs/AdapterBase",
+          "description": "The base model this adapter was trained against. MANDATORY: an adapter is meaningless without it, and miLLM refuses an adapter against a different base (BRD-01 R-01.27)."
+        },
+        "created_at": {
+          "description": "RFC 3339 timestamp of the save.",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "kind": {
+          "const": "miforge.adapter-manifest",
+          "default": "miforge.adapter-manifest",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "The fully qualified adapter name, '<base_model>:<run_id>:adapter-<step>', with step UNPADDED \u2014 the same display rule the checkpoint manifest's 'name' follows (BRD-01 R-01.24: paths pad to six digits, names do not). The 'adapter-' segment is what distinguishes an adapter from a checkpoint of the same run and step in the tree (BRD-02 R-02.29).",
+          "title": "Name",
+          "type": "string"
+        },
+        "optimizer": {
+          "$ref": "#/$defs/OptimizerIdentity",
+          "description": "Which optimizer produced this adapter step, and whether its state was carried in or started fresh."
+        },
+        "parts": {
+          "description": "Contract references of the pack parts this adapter trained on, each '{type, name, version}' per miDataworks' handoff contract, or an external part's provenance (BRD-02 R-02.35, R-02.40). Unlike the checkpoint manifest, this artifact DOES carry them: an adapter is small, portable and routinely moved between installations, so it has to be able to say what it was trained on without its run log.",
+          "items": {
+            "type": "object"
+          },
+          "title": "Parts",
+          "type": "array"
+        },
+        "retention": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScoreRecord"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The out-of-domain score at this step (BRD-02 R-02.17).",
+          "title": "Retention"
+        },
+        "run_id": {
+          "description": "The adapter run that produced this.",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "step": {
+          "description": "The canonical step integer, as the checkpoint manifest defines it (BRD-01 R-01.24): paths render it zero-padded to six digits, 'name' renders it unpadded. Nothing carries the step as a string of its own.",
+          "minimum": 0,
+          "title": "Step",
+          "type": "integer"
+        },
+        "test": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScoreRecord"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The in-domain score at this step (BRD-02 R-02.16, R-02.18).",
+          "title": "Test"
+        },
+        "weights_sha256": {
+          "description": "Hash of 'adapter_model.safetensors'. REQUIRED, and added because BRD-01 R-01.27 obliges miLLM to verify an adapter's hash the way R-01.14 verifies a checkpoint's weights_sha256 \u2014 a verification that had no field to read until this schema existed. Without it R-01.27 is unimplementable and a corrupted adapter loads silently.",
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Weights Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "schema_version",
+        "name",
+        "run_id",
+        "step",
+        "base",
+        "adapter",
+        "weights_sha256",
+        "created_at"
+      ],
+      "title": "AdapterManifestV1",
+      "type": "object"
+    },
+    "OptimizerIdentity": {
+      "additionalProperties": false,
+      "description": "Which optimizer produced a step, and the provenance of its state. Same shape as the checkpoint manifest's, so consumers can share code.",
+      "properties": {
+        "config_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of the optimizer hyperparameters.",
+          "title": "Config Hash"
+        },
+        "name": {
+          "description": "For example 'adamw-8bit'.",
+          "title": "Name",
+          "type": "string"
+        },
+        "state": {
+          "description": "'restored' when optimizer state was loaded for the resumed step, 'fresh' when a new optimizer was started.",
+          "enum": [
+            "restored",
+            "fresh"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "state"
+      ],
+      "title": "OptimizerIdentity",
+      "type": "object"
+    },
+    "ScoreRecord": {
+      "additionalProperties": false,
+      "description": "A score against a named evaluation set at one step. Same shape as the checkpoint manifest's.",
+      "properties": {
+        "floor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The value the run stops below. Set for retention (BRD-02 R-02.25); normally null for test.",
+          "title": "Floor"
+        },
+        "n": {
+          "description": "How many prompts were scored.",
+          "minimum": 1,
+          "title": "N",
+          "type": "integer"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Written by the trainer. Which inference provider produced this score (BRD-02 R-02.16, R-02.49): a score is only comparable against another taken the same way. Null when the provider was not recorded.",
+          "title": "Provider"
+        },
+        "score": {
+          "description": "The score, normalised to 0..1.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "set": {
+          "description": "Identifier of the evaluation set that produced this score.",
+          "title": "Set",
+          "type": "string"
+        }
+      },
+      "required": [
+        "set",
+        "score",
+        "n"
+      ],
+      "title": "ScoreRecord",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/AdapterManifestV1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

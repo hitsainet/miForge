@@ -1,0 +1,268 @@
+{
+  "$defs": {
+    "CompositeSelector": {
+      "additionalProperties": false,
+      "description": "Combines child selectors.\n\nUNDECIDED PROPAGATES: if any child needed for the decision is undecided, the composite is undecided. 'all' with one undecided child cannot be accept (the child may yet reject) and must not be reject (nobody rejected). This is the one place the three-valued logic is non-obvious, which is why it is stated in the contract rather than left to an implementer.",
+      "properties": {
+        "children": {
+          "description": "Names of other configured selectors.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "combine": {
+          "enum": [
+            "all",
+            "any",
+            "majority"
+          ],
+          "type": "string"
+        },
+        "config_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of the miDataworks-authored configuration body, cited not copied (R-02.7, R-02.9 as amended, R-02.10). This is what a checkpoint manifest's selector_hash records. Null ONLY for a selector configured inline during a pack dry-run (R-02.39), which is a different activity from an in-run selection and must not be conflated with it - that conflation went wrong once already."
+        },
+        "kind": {
+          "const": "composite",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "config_sha256",
+        "children",
+        "combine"
+      ],
+      "title": "CompositeSelector",
+      "type": "object"
+    },
+    "HumanReviewSelector": {
+      "additionalProperties": false,
+      "description": "Writes candidates to miDataworks' review queue and reads decisions back (R-02.36, BRD-03 R-03.41).\n\nTHIS IS THE TYPE THAT FORCES THE THIRD VERDICT VALUE. It is necessarily asynchronous: at the moment it returns, the answer is 'undecided', which is neither a soft accept nor a soft reject. The queue is miDataworks' and MUST NOT be rebuilt here; the pack-authoring dry-run is a different activity.\n\nThe decision mapping is fixed: accept->accept, reject->reject, override->UNDECIDED, skip->undecided. override maps to undecided because their label_set is 2-64 FREE STRINGS, so for a set that is not accept/reject-shaped, reading 'override' as an admission is the silent default F10's own requirement forbids.",
+      "properties": {
+        "config_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of the miDataworks-authored configuration body, cited not copied (R-02.7, R-02.9 as amended, R-02.10). This is what a checkpoint manifest's selector_hash records. Null ONLY for a selector configured inline during a pack dry-run (R-02.39), which is a different activity from an in-run selection and must not be conflated with it - that conflation went wrong once already."
+        },
+        "kind": {
+          "const": "human_review",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "queue": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How long a candidate may stay undecided before the run stops waiting. Null means wait indefinitely. A TIMEOUT DOES NOT ADMIT THE CANDIDATE - it leaves it undecided and excluded, because no consumer may construct a path from undecided to admitted."
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "config_sha256",
+        "queue"
+      ],
+      "title": "HumanReviewSelector",
+      "type": "object"
+    },
+    "JudgeModelSelector": {
+      "additionalProperties": false,
+      "description": "A second model judges the completion.\n\nIT GOES THROUGH THE PROVIDER ABSTRACTION (R-02.49), NOT A NAMED TRANSPORT. R-02.9 originally said this selector 'calls a second model on the CPU nodes via llama.cpp' - a hardcoded transport, which is the exact shape that made the whole document depend on one sibling. It was not swept with the three 'through miLLM' paths and section 9 already contradicted it. Any OpenAI-compatible endpoint serves, and R-02.11 makes the in-process provider unusable AS A JUDGE, so this type reports itself unavailable when no endpoint is configured rather than silently falling back to the model being trained - which would be a model grading itself.",
+      "properties": {
+        "config_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of the miDataworks-authored configuration body, cited not copied (R-02.7, R-02.9 as amended, R-02.10). This is what a checkpoint manifest's selector_hash records. Null ONLY for a selector configured inline during a pack dry-run (R-02.39), which is a different activity from an in-run selection and must not be conflated with it - that conflation went wrong once already."
+        },
+        "kind": {
+          "const": "judge_model",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "provider": {
+          "description": "A provider key from F4's registry, never a sibling's name.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "threshold": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "config_sha256",
+        "provider"
+      ],
+      "title": "JudgeModelSelector",
+      "type": "object"
+    },
+    "ReferenceMatchSelector": {
+      "additionalProperties": false,
+      "description": "Compares the completion against a reference answer.\n\nMODES ARE 'exact' AND 'fuzzy' ONLY. Embedding similarity was offered by R-02.9's amendment and is DELIBERATELY ABSENT: R-02.49's provider abstraction is scoped to generation, the word 'embedding' occurs exactly once in the whole BRD - in that amendment - and no provider and no source exists for it. Same shape as the missing load call: a capability named in prose with no mechanism. Cutting it is cheaper than widening the provider contract, and a selector that silently fell back to fuzzy matching when asked for embeddings would be the fabricated value ADR-018 forbids.",
+      "properties": {
+        "config_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of the miDataworks-authored configuration body, cited not copied (R-02.7, R-02.9 as amended, R-02.10). This is what a checkpoint manifest's selector_hash records. Null ONLY for a selector configured inline during a pack dry-run (R-02.39), which is a different activity from an in-run selection and must not be conflated with it - that conflation went wrong once already."
+        },
+        "kind": {
+          "const": "reference_match",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "exact",
+            "fuzzy"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "threshold": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "config_sha256",
+        "mode"
+      ],
+      "title": "ReferenceMatchSelector",
+      "type": "object"
+    },
+    "RuleSelector": {
+      "additionalProperties": false,
+      "description": "A deterministic predicate over the completion. Needs no model and no endpoint, so it is the only type guaranteed available on the standalone path with nothing configured.",
+      "properties": {
+        "config_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hash of the miDataworks-authored configuration body, cited not copied (R-02.7, R-02.9 as amended, R-02.10). This is what a checkpoint manifest's selector_hash records. Null ONLY for a selector configured inline during a pack dry-run (R-02.39), which is a different activity from an in-run selection and must not be conflated with it - that conflation went wrong once already."
+        },
+        "expression": {
+          "description": "The rule body, interpreted by F3. Opaque to this contract.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "const": "rule",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "config_sha256",
+        "expression"
+      ],
+      "title": "RuleSelector",
+      "type": "object"
+    },
+    "SelectorConfigV1": {
+      "description": "One selector's configuration (BRD-02 R-02.9, R-02.10, R-02.11).\n\nFIVE TYPES, discriminated on `kind`. The configuration BODY is authored and versioned in miDataworks and cited here by hash; miForge runs it. reference_match and composite were added on 2026-10-13 - the UI assumed both and reference_match was already implied by the test sets.\n\nThe VERDICT this produces is three-valued (accept/reject/undecided) and is defined once in backend/src/schemas/selector.py. No consumer defines a verdict type of its own.",
+      "discriminator": {
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RuleSelector"
+        },
+        {
+          "$ref": "#/$defs/JudgeModelSelector"
+        },
+        {
+          "$ref": "#/$defs/ReferenceMatchSelector"
+        },
+        {
+          "$ref": "#/$defs/HumanReviewSelector"
+        },
+        {
+          "$ref": "#/$defs/CompositeSelector"
+        }
+      ],
+      "title": "SelectorConfigV1"
+    }
+  },
+  "$id": "selector-config-v1.json",
+  "$ref": "#/$defs/SelectorConfigV1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,0 +1,54 @@
+# Build-context exclusions for the ROOT context, which is what `hitsai/miforge-backend`
+# builds from (docker-images.yml: `context: .`, `dockerfile: ./backend/Dockerfile`).
+#
+# The context is the repository root because `pip install .` needs `pyproject.toml`,
+# which declares `backend/src` as the package root. This file is what keeps that wide
+# context from being a liability — without it the daemon receives `.git/`, `.venv/`,
+# `node_modules/` and the whole `0xcc/` planning tree on every build.
+#
+# ⚠ THIS IS NOT A PRIVACY BOUNDARY, and must not be mistaken for one. What does or does
+# not reach the PUBLIC MIRROR is decided by `sync-to-clean.yml`'s exclusion list alone.
+# The two lists overlap and are maintained separately on purpose: this one is about
+# build speed and image size, that one is about what gets published. Changing one is not
+# changing the other.
+#
+# `frontend/` has its own `.dockerignore`: BuildKit resolves the ignore file relative to
+# each build's own context, and the frontend image builds from `./frontend`.
+
+# Version control and CI
+.git
+.gitignore
+.github
+
+# Framework and planning documents (private; stripped from the mirror too)
+0xcc
+.claude
+.understand-anything
+AGENT.md
+CLAUDE.md
+GEMINI.md
+backups
+scripts
+
+# Local environments and caches
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+**/__pycache__
+**/*.pyc
+.env
+.env.*
+
+# The frontend is a separate image; none of it belongs in the backend's context.
+frontend
+
+# Dev-only orchestration. The deploy path is GitOps (ADR-019).
+docker-compose.yml
+gitops
+
+# docs/ is dev-internal EXCEPT the vendored contracts, which the image carries so a
+# running container can validate what it writes against them (ADR-014).
+docs/*
+!docs/schemas

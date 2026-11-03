@@ -1,0 +1,17 @@
+# miForge's own namespace. ADR-019: **miForge is its own Deployment**, not a container in
+# another application's pod — so it gets its own namespace too, as miLLM, miStudio and
+# miDataworks each do.
+#
+# Worth recording why, because the alternative was seriously considered and is still
+# written up in AGENT.md: a sidecar inside miLLM's pod would share an IPC namespace,
+# which CUDA IPC needs for the optional §5.10 hot-update mode. The standalone reframe
+# removed the need, and co-tenancy carried a cost that outlived the argument for it —
+# miLLM's Deployment is `strategy: Recreate`, so a miForge image change would have
+# restarted the whole miLLM pod. **Deploying miForge would have been a serving outage**,
+# in a project whose central promise is that *training* is not one.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: miforge
+  labels:
+    app.kubernetes.io/part-of: miforge

@@ -1,0 +1,643 @@
+{
+  "$defs": {
+    "BatchBlock": {
+      "additionalProperties": false,
+      "description": "The batch a step drew from (BRD-02 R-02.8).\n\nWRITTEN BY F2.\n\nThe payload is a $ref to batch-record-v1.json - ONE definition, referenced, not a second copy. F2 writes that record and F7 reads it; embedding a copy here would give the project two batch-record shapes, which is precisely the drift the contract gate exists to prevent.\n\nThis block was ADDED in a second pass: the block map enumerated four blocks while F2's batch record was a fifth writer to the same authoritative log. reindex rebuilds the index from that log alone, so without this block F1 and F2 write two undeclared line shapes to one path and reindex has no rule to tell them apart.",
+      "properties": {
+        "batch": {
+          "$ref": "batch-record-v1.json#/$defs/BatchRecordV1"
+        },
+        "block": {
+          "const": "batch",
+          "description": "THE DISCRIMINATOR. Required on every line.",
+          "type": "string"
+        },
+        "run_id": {
+          "description": "Bound for the run's lifetime (ADR-021).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The canonical step as ONE integer (BRD-01 R-01.24). Paths render it zero-padded to six digits and the qualified name renders it unpadded; 'step-<N>' appears in no contract. Null only on a 'definition' block, which is written before step 0 exists."
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block",
+        "run_id",
+        "step",
+        "ts",
+        "batch"
+      ],
+      "title": "BatchBlock",
+      "type": "object"
+    },
+    "BoundaryBlock": {
+      "additionalProperties": false,
+      "description": "A round boundary: what the loop decided and why (BRD-02 R-02.24-R-02.27).\n\nheartbeat_gap_ms is the measurement that SETS the janitor's lapse threshold, and nothing else in the product can produce it. Until it exists the threshold has no defensible value - which is why the run screen states the last step, the time since it, and this gap, rather than inventing a liveness rule of its own. The 60 s heartbeat is a MINIMUM INTERVAL BETWEEN WRITES, not a maximum gap: a generation-bound test pass and a 2.4 GB save both legitimately exceed it, and a threshold derived from it showed every healthy run as stalled.\n\nWRITTEN BY F6.",
+      "properties": {
+        "block": {
+          "const": "boundary",
+          "description": "THE DISCRIMINATOR. Required on every line.",
+          "type": "string"
+        },
+        "cadence": {
+          "additionalProperties": false,
+          "description": "What the loop chose to do next, and when it will next test or save.",
+          "properties": {
+            "next_save_at_step": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "next_test_at_step": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "heartbeat_gap_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Longest observed gap in this round."
+        },
+        "phase_timings_ms": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "Per-phase wall time: generate, select, step, test, save.",
+          "type": "object"
+        },
+        "round": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "run_id": {
+          "description": "Bound for the run's lifetime (ADR-021).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The canonical step as ONE integer (BRD-01 R-01.24). Paths render it zero-padded to six digits and the qualified name renders it unpadded; 'step-<N>' appears in no contract. Null only on a 'definition' block, which is written before step 0 exists."
+        },
+        "stop_conditions": {
+          "items": {
+            "additionalProperties": false,
+            "description": "One stop condition, evaluated, WITH the step it was observed at.",
+            "properties": {
+              "condition": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "detail": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "observed_at_step": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "triggered": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "condition",
+              "triggered",
+              "observed_at_step"
+            ],
+            "title": "StopConditionEvaluation",
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block",
+        "run_id",
+        "step",
+        "ts",
+        "round",
+        "stop_conditions",
+        "phase_timings_ms"
+      ],
+      "title": "BoundaryBlock",
+      "type": "object"
+    },
+    "DefinitionBlock": {
+      "additionalProperties": false,
+      "description": "The run's definition, recorded before anything is allocated (BRD-02 R-02.53).\n\nR-02.53 had to be ADDED to the BRD: nothing defined creating or starting a run. R-02.24 defined the loop's body, R-02.38 said a run 'cannot start' from an invalid pack, R-02.42 'refuses to start' an oversized one, R-02.22 said to 'start miForge with' a run_id - every one presupposed a run coming into existence and none defined it. That is why the New run form, the product's primary action, had three features each naming another as its owner: there was nothing to point at.\n\nSUBMITTED AND RESOLVED ARE TWO FIELDS, DELIBERATELY. What the operator asked for and what it resolved to are different facts, and collapsing them loses the ability to say 'you asked for auto and got this card'. Hashed canonically and durable BEFORE the enqueue, so a run that dies between submit and first step is still explicable.\n\nWRITTEN BY F6.",
+      "properties": {
+        "block": {
+          "const": "definition",
+          "description": "THE DISCRIMINATOR. Required on every line.",
+          "type": "string"
+        },
+        "definition_sha256": {
+          "description": "Canonical hash of `resolved` (ADR-005).",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "resolved": {
+          "description": "After resolution: the GPU UUID, pinned part versions, the computed budget.",
+          "type": "object"
+        },
+        "run_id": {
+          "description": "Bound for the run's lifetime (ADR-021).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The canonical step as ONE integer (BRD-01 R-01.24). Paths render it zero-padded to six digits and the qualified name renders it unpadded; 'step-<N>' appears in no contract. Null only on a 'definition' block, which is written before step 0 exists."
+        },
+        "submitted": {
+          "description": "Exactly what was submitted, unresolved.",
+          "type": "object"
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block",
+        "run_id",
+        "step",
+        "ts",
+        "submitted",
+        "resolved",
+        "definition_sha256"
+      ],
+      "title": "DefinitionBlock",
+      "type": "object"
+    },
+    "EvaluationBlock": {
+      "additionalProperties": false,
+      "description": "One evaluation pass over a test or retention set (BRD-02 R-02.16-R-02.19).\n\nTHIS BLOCK EXISTS BECAUSE FOUR OF ITS FIELDS CHANGE WHAT A SCORE MEANS AND THE MANIFESTS DO NOT CARRY THEM. ScoreRecord gained 'provider' on 2026-10-13, so a score's provenance now lives on the artifact and can travel without this log - which matters because an adapter is routinely moved without its run log. Still absent from both manifests, and therefore recorded here: the aggregation method, the decode parameters, the subsample seed and the split markers. Two checkpoints can both report '0.82' and not be comparable without them.\n\nWRITTEN BY F4.",
+      "properties": {
+        "aggregation": {
+          "description": "How per-prompt results became one number. 'mean' and 'pass@k' are not the same claim.",
+          "enum": [
+            "mean",
+            "median",
+            "pass_at_k",
+            "exact_match_rate",
+            "weighted_mean"
+          ],
+          "type": "string"
+        },
+        "block": {
+          "const": "evaluation",
+          "description": "THE DISCRIMINATOR. Required on every line.",
+          "type": "string"
+        },
+        "decode_params": {
+          "additionalProperties": false,
+          "description": "A score at temperature 0 is not comparable with one at 0.8.",
+          "properties": {
+            "max_tokens": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "stop": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "temperature": {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "top_p": {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            }
+          },
+          "required": [
+            "temperature",
+            "top_p",
+            "max_tokens"
+          ],
+          "type": "object"
+        },
+        "provider": {
+          "description": "The full provider identity. ScoreRecord carries only the string form.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "retention_floor_breached": {
+          "description": "Whether any retention set fell below its floor. Recorded as a FACT on the pass rather than derived later by comparing two numbers, so the decision the loop took is reconstructible from the log alone (ADR-004: reindex rebuilds from the log).",
+          "type": "boolean"
+        },
+        "run_id": {
+          "description": "Bound for the run's lifetime (ADR-021).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "scores": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "floor": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "The retention floor, when the set has one."
+              },
+              "n": {
+                "description": "The SAMPLE SIZE. ADR-012: every number names its scale and sample.",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "provider": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Mirrors ScoreRecord.provider on the artifact."
+              },
+              "score": {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              "set": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "set",
+              "score",
+              "n",
+              "floor",
+              "provider"
+            ],
+            "title": "ScoreEntry",
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "split": {
+          "description": "held_out / evaluation_only markers from the part, carried through.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The canonical step as ONE integer (BRD-01 R-01.24). Paths render it zero-padded to six digits and the qualified name renders it unpadded; 'step-<N>' appears in no contract. Null only on a 'definition' block, which is written before step 0 exists."
+        },
+        "subsample_seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "WHICH n prompts. Null is an assertion that no seed was set, which makes the number irreproducible - worth recording as a fact rather than hiding."
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block",
+        "run_id",
+        "step",
+        "ts",
+        "scores",
+        "provider",
+        "aggregation",
+        "decode_params",
+        "subsample_seed",
+        "split",
+        "retention_floor_breached"
+      ],
+      "title": "EvaluationBlock",
+      "type": "object"
+    },
+    "ScoreEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "floor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The retention floor, when the set has one."
+        },
+        "n": {
+          "description": "The SAMPLE SIZE. ADR-012: every number names its scale and sample.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mirrors ScoreRecord.provider on the artifact."
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "set": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "set",
+        "score",
+        "n",
+        "floor",
+        "provider"
+      ],
+      "title": "ScoreEntry",
+      "type": "object"
+    },
+    "StepBlock": {
+      "additionalProperties": false,
+      "description": "One optimizer step (BRD-02 R-02.14).\n\nThe two protocol timings are MODE-DEPENDENT and present only in the optional hot-update mode (BRD-02 section 5.10). R-02.14 requires them on 'every step record', which was written when every step held a barrier; standalone there is no quiesce and no commit bracket, so demanding them would make the core product unable to satisfy its own requirement. They are nullable here and the mode fills them.\n\ncommit_duration_ms is NOT local telemetry: miLLM Feature 31's acceptance gate is set from its p99.9, so the field is a cross-repo product obligation.\n\nWRITTEN BY F1.",
+      "properties": {
+        "batch_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "block": {
+          "const": "step",
+          "description": "THE DISCRIMINATOR. Required on every line.",
+          "type": "string"
+        },
+        "commit_duration_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SECTION 5.10 ONLY. commit-begin to commit-end."
+        },
+        "gradient_norm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "learning_rate": {
+          "type": "number"
+        },
+        "loss": {
+          "description": "The objective's value. Which objective is F2's dispatch on batch.objective, not a hard-coded cross-entropy - a defect caught only because two internally-consistent chains were read against each other.",
+          "type": "number"
+        },
+        "objective": {
+          "description": "The objective that produced `loss`.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "quiesce_hold_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SECTION 5.10 ONLY. As reported by miLLM."
+        },
+        "run_id": {
+          "description": "Bound for the run's lifetime (ADR-021).",
+          "minLength": 1,
+          "type": "string"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The canonical step as ONE integer (BRD-01 R-01.24). Paths render it zero-padded to six digits and the qualified name renders it unpadded; 'step-<N>' appears in no contract. Null only on a 'definition' block, which is written before step 0 exists."
+        },
+        "ts": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "wall_time_ms": {
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "block",
+        "run_id",
+        "step",
+        "ts",
+        "loss",
+        "objective",
+        "learning_rate",
+        "wall_time_ms"
+      ],
+      "title": "StepBlock",
+      "type": "object"
+    },
+    "StepRecordV1": {
+      "description": "ONE LINE of a run log. The run log is JSON Lines: one of these objects per line, appended.\n\nFIVE DISJOINT BLOCKS, ONE SCHEMA, ONE FILE, discriminated on `block`. Four features write five different things to this log - step (F1), evaluation (F4), boundary (F6), definition (F6) and batch (F2) - and before this was settled three of them had nowhere defined to put theirs, so each would have invented its own shape.\n\nWhy a discriminated union rather than five sibling schemas in five files, and both reasons come from decisions already taken: ADR-004 makes `reindex` rebuild the index FROM THE LOG ALONE, so the reader needs the discriminator IN THE LINE IT IS READING rather than knowledge of which file it came from; and these blocks are appended INTERLEAVED to one run's log, so splitting them by file would mean four writers choosing paths and a reader joining them on run_id and step - reconstructing an ordering the single log gives for free.\n\nNO PROMPT OR COMPLETION TEXT APPEARS IN ANY BLOCK (ADR-020).",
+      "discriminator": {
+        "propertyName": "block"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StepBlock"
+        },
+        {
+          "$ref": "#/$defs/EvaluationBlock"
+        },
+        {
+          "$ref": "#/$defs/BoundaryBlock"
+        },
+        {
+          "$ref": "#/$defs/DefinitionBlock"
+        },
+        {
+          "$ref": "#/$defs/BatchBlock"
+        }
+      ],
+      "title": "StepRecordV1"
+    },
+    "StopConditionEvaluation": {
+      "additionalProperties": false,
+      "description": "One stop condition, evaluated, WITH the step it was observed at.",
+      "properties": {
+        "condition": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "observed_at_step": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "triggered": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "condition",
+        "triggered",
+        "observed_at_step"
+      ],
+      "title": "StopConditionEvaluation",
+      "type": "object"
+    }
+  },
+  "$id": "step-record-v1.json",
+  "$ref": "#/$defs/StepRecordV1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none" role="img" aria-label="miForge">
+  <!-- miForge's browser-tab mark: THE SIDEBAR'S LOGO TILE, drawn with the same numbers.
+       Not a new piece of art - `Sidebar.tsx` renders `<IconTile icon={Flame}
+       surface="logo-tile" />` and `IconTile.tsx` renders that surface as
+       `bg-accent text-white` with `rounded-control`, so this file is that component in
+       static form.
+
+       ⚠ A SOLID ACCENT TILE IS CORRECT HERE, AND IT IS THE ONE PLACE THAT NEEDS SAYING.
+       ADR-012's accent rule is "orange is accent only", which is widely (and rightly)
+       read as "do not paint things orange" - but the rule NAMES ITS SURFACES, and the
+       PADR's own sentence lists **the logo tile** among them:
+
+         "orange appears on the active nav item, primary buttons, the logo tile, list-row
+          icon tiles, the loss curve, running progress bars, and the callout banner tint.
+          **Not** on body text, borders, backgrounds, or any status pill except Running."
+
+       `config/tokens.ts` carries that list as `ADR_012_ACCENT_SURFACES` and
+       `accent.test.tsx` enforces it; `accentAllowlist.ts` records
+       `{ file: 'IconTile.tsx', surface: 'logo-tile' }`. So the tile is an ALLOWLISTED
+       accent surface, not an exception being taken here. Painting it `panel` with an
+       orange glyph would have matched neither the component nor the mockup.
+
+       ── EVERY NUMBER BELOW IS A TOKEN, WHICH IS WHY THE VIEWBOX IS 36 AND NOT 32 ──
+       The siblings' favicons use `0 0 32 32` because their sidebar tiles are 32 px
+       (`w-8 h-8`). miForge's is `SHELL.iconTilePx` = **36**, so drawing at 36 lets the
+       radius and the glyph size be the tokens themselves rather than values scaled off
+       them - and `test_favicon_is_the_logo_tile.py` asserts them against
+       `config/tokens.ts` instead of against copied constants. An SVG is
+       resolution-independent, so the viewBox number costs nothing at render time.
+
+         rect 36 x 36        SHELL.iconTilePx
+         rx 8                SHELL.controlRadiusPx (IconTile's `rounded-control`)
+         fill #F97316        tokens.ts `accent`, IDENTICAL IN BOTH THEMES on purpose
+                             ("the accent is miForge's identity"), so this mark needs no
+                             prefers-color-scheme variant - unlike a mark built from
+                             `panel` or `text`, which differ per theme.
+         glyph 18 px         IconTile renders the icon at `round(sizePx / 2)` = 18
+         scale 0.75          18 / 24, lucide's icons being drawn in a 24-unit box
+         translate 9 9       (36 - 18) / 2, centred
+         stroke-width 2      lucide's own, inside the 24-unit box; after `scale(0.75)` it
+                             is 1.5 units of this tile - exactly what lucide-react paints
+
+       The path is lucide-react 0.468.0's `flame` body, copied verbatim from
+       `node_modules/lucide-react/dist/esm/icons/flame.js`. The test re-reads that file
+       and compares, so upgrading lucide and changing the sidebar's glyph makes this file
+       fail rather than quietly disagree with the sidebar it is meant to mirror. -->
+  <rect width="36" height="36" rx="8" fill="#F97316"/>
+  <g transform="translate(9 9) scale(0.75)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+  </g>
+</svg>

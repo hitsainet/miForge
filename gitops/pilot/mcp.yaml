@@ -1,0 +1,169 @@
+# miForge MCP server (feature 012; BRD-MIFORGE-MCP-001). Adapted from miDataworks'
+# k8s/base/mcp.yaml @ a055a38 (docs/REUSE.md): Deployment, Service, probes and Ingress hosts
+# kept; miForge's image, identity, categories and hosts.
+#
+# ⚠ THIS POD HAS NO DATABASE URL, NO REDIS URL, NO VOLUME AND NO GPU, AND MUST NEVER GET ONE.
+# Its tools reach the backend over HTTP only (MIFORGE_API_URL), so every rule in the REST layer
+# - the approval gate above all - runs whoever calls. backend/tests/unit/
+# test_mcp_manifest_isolation.py fails if DATABASE_URL, REDIS_URL, CELERY_BROKER_URL, envFrom,
+# a volume or a volume mount appears below, or if NVIDIA_VISIBLE_DEVICES is not `void`.
+#
+# ⚠ NVIDIA_VISIBLE_DEVICES=void, NOT AN ABSENT VARIABLE. The node's default container runtime is
+# nvidia and miForge's pods request no `nvidia.com/gpu` (backend.yaml's header), so a container
+# that says nothing would be handed every card. `void` makes the runtime mount none (D10).
+#
+# THE IMAGE IS THE BACKEND'S (D10): one build, and the `images:` entry in kustomization.yaml
+# already carries ArgoCD Image Updater's digest pin for `hitsai/miforge-backend`, so this
+# Deployment rolls with the backend. Only `command:` differs.
+#
+# ⚠ OPERATOR STEP, NOT DONE HERE: the key MCP_BEARER_TOKEN in the Secret `miforge-secrets`
+# (D6). Until it exists this pod sits in CreateContainerConfigError and NOTHING ELSE IS
+# AFFECTED - the backend pods do not read the key. The value is never committed:
+#   microk8s kubectl -n miforge patch secret miforge-secrets --type merge \
+#     -p "{\"stringData\":{\"MCP_BEARER_TOKEN\":\"$(openssl rand -hex 32)\"}}"
+#
+# Cut agent access: microk8s kubectl -n miforge scale deploy/miforge-mcp --replicas=0
+# (the backend, the UI and every run are unaffected).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miforge-mcp
+  namespace: miforge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: miforge-mcp
+  template:
+    metadata:
+      labels:
+        app: miforge-mcp
+    spec:
+      # Stateless: no volume, so no node pin.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      containers:
+        - name: mcp-server
+          image: hitsai/miforge-backend:latest
+          imagePullPolicy: Always
+          command: ["python", "-m", "mcp_server"]
+          env:
+            - name: MIFORGE_API_URL
+              value: http://miforge-backend:8000
+            - name: MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: MCP_BEARER_TOKEN
+            - name: MCP_AGENT_IDENTITY
+              value: agent:forge-mcp
+            - name: MCP_TOOL_CATEGORIES
+              # All ten. An explicit list overrides DEFAULT_CATEGORIES in the code, so a
+              # category missing here is OFF in production; test_mcp_reachability.py fails if
+              # any is missing or any name is invalid.
+              value: "adapters,chains,checkpoints,core,drafts,hotupdate,inputs,packs,runs,settings"
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: void
+          ports:
+            - containerPort: 8765
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8765
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8765
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: miforge-mcp
+  namespace: miforge
+spec:
+  type: ClusterIP
+  selector:
+    app: miforge-mcp
+  ports:
+    - port: 8765
+      targetPort: 8765
+---
+# Streamable HTTP: long-lived responses, so long timeouts and no buffering. Bearer auth on every
+# request except /health (D6). The three hosts follow the live siblings' pattern
+# (mistudio-mcp-ingress, midataworks-mcp-ingress): the app's LAN name at /mcp, the mcp-<app> LAN
+# name, and the mcp-<app> tunnelled name.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: miforge-mcp-ingress
+  namespace: miforge
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+spec:
+  ingressClassName: public
+  rules:
+    - host: k8s-miforge.hitsai.local
+      http:
+        paths:
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-mcp
+                port:
+                  number: 8765
+    - host: mcp-forge.hitsai.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-mcp
+                port:
+                  number: 8765
+    - host: k8s-mcp-forge.hitsai.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-mcp
+                port:
+                  number: 8765
+    # Off-LAN (D6): the name the Cloudflare tunnel forwards - an OPERATOR STEP, the tunnel's
+    # configuration lives in no repository. Bearer auth on every request; agent calls still
+    # pass the backend's approval gate.
+    - host: mcp-forge.hitsai.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: miforge-mcp
+                port:
+                  number: 8765

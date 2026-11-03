@@ -1,0 +1,15 @@
+{
+  // This file is not used in compilation. It is here just for a nice editor experience.
+  "extends": "@docusaurus/tsconfig",
+  "compilerOptions": {
+    // TypeScript 7 removed `baseUrl` (TS5102), and @docusaurus/tsconfig 3.10.2 still sets
+    // it, so it is unset here (`null` clears an inherited option). `paths` is restated
+    // because, without `baseUrl`, the inherited `./*` would resolve relative to
+    // node_modules/@docusaurus/tsconfig/ instead of this directory.
+    "baseUrl": null,
+    "paths": {
+      "@site/*": ["./*"]
+    }
+  },
+  "exclude": [".docusaurus", "build"]
+}

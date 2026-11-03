@@ -1,0 +1,55 @@
+# miForge GitOps base — deployed by the `miforge` ArgoCD Application
+# (`gitops/pilot/argocd/miforge-app.yaml`) from the `gitops/pilot` BRANCH.
+#
+# ⚠ `gitops/pilot` IS BOTH A DIRECTORY AND A BRANCH NAME HERE, which is confusing enough
+# to say out loud: the Application's `targetRevision` is the BRANCH `gitops/pilot` and
+# its `path` is the DIRECTORY `gitops/pilot` on that branch. The siblings keep their
+# manifests at `k8s/base` on the same branch; miForge's foundation backlog names the
+# directory `gitops/pilot/` and that is what is built here. Nothing breaks either way —
+# flagged because an operator moving between the four repositories will look for
+# `k8s/base` first.
+#
+# Image tags below are the DEFAULTS. ArgoCD Image Updater overrides them with digest
+# pins through the parameter-override file `.argocd-source-miforge.yaml`, which it
+# commits to gitops/pilot. **Never hand-edit that file, and never create it on main** —
+# `sync-main-to-gitops-pilot.yml` excludes it from its converge step precisely so the
+# running pin survives a push to main.
+#
+# ⚠ `storage.yaml` IS DELIBERATELY NOT LISTED. It holds the PersistentVolumes and claims
+# for the artifact roots and for PGDATA, and it is applied BY HAND:
+#
+#     kubectl apply -f gitops/pilot/storage.yaml
+#
+# ArgoCD `selfHeal` reconciling a data-bearing volume is how a database gets deleted by
+# a sync. miStudio's `k8s/neuronpedia/storage.yaml` makes the same exclusion for the
+# same reason, and its header records what the alternative cost. The consequence is that
+# a fresh install sits `Pending` until that command is run — which is listed as a
+# one-time prerequisite in the Application, not left to be discovered.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - config.yaml
+  - postgres.yaml
+  - redis.yaml
+  - backend.yaml
+  - frontend.yaml
+  # ⚠ ADDED 2026-10-14, AND THE LISTING IS HALF THE FIX. Kustomize applies only what
+  # `resources:` names, so an `ingress.yaml` present on disk but absent from this list is
+  # a file ArgoCD never applies — and the symptom is a 404 from the ingress controller's
+  # default backend, which is indistinguishable from having written no Ingress at all.
+  # That is the bug this file closes, so leaving it unlisted would have looked like the
+  # fix while changing nothing. miLLM, miStudio and miDataworks all list theirs.
+  - ingress.yaml
+  # F12 (BRD-MIFORGE-MCP-001): the MCP server - Deployment, Service and Ingress. LISTED, because
+  # an unlisted manifest is never applied (the ingress.yaml lesson above);
+  # test_mcp_manifest_isolation.py asserts this line. It runs the backend image, so the
+  # `images:` entry below pins it too.
+  - mcp.yaml
+
+images:
+  - name: hitsai/miforge-backend
+    newTag: latest
+  - name: hitsai/miforge-frontend
+    newTag: latest
