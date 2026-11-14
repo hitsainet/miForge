@@ -1,0 +1,54 @@
+{
+  "degraded_dependencies": [],
+  "dependencies": {
+    "postgres": {
+      "detail": null,
+      "status": "ok"
+    },
+    "redis": {
+      "detail": null,
+      "status": "ok"
+    }
+  },
+  "environment": "dev",
+  "integrations": {
+    "activation_source": {
+      "capabilities_unavailable": [
+        "activation statistics for the retention check"
+      ],
+      "code": "activation_source_not_configured",
+      "configured": false
+    },
+    "midataworks": {
+      "capabilities_unavailable": [
+        "contract dataset parts",
+        "the human-review selector queue"
+      ],
+      "code": "midataworks_not_configured",
+      "configured": false
+    },
+    "millm": {
+      "capabilities_unavailable": [
+        "the optional in-place hot-update mode"
+      ],
+      "code": "millm_not_configured",
+      "configured": false
+    }
+  },
+  "legacy_names": {
+    "also_set": [],
+    "conflicts": [],
+    "in_use": [],
+    "retired_but_set": []
+  },
+  "legacy_names_meta": {
+    "error": null,
+    "in_use_window_hours": 24
+  },
+  "status": "ok",
+  "unconfigured_integrations": [
+    "activation_source",
+    "midataworks",
+    "millm"
+  ]
+}

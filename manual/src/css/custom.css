@@ -1,0 +1,42 @@
+/**
+ * miForge Manual theme: the admin UI's orange accent on its neutral slate surfaces
+ * (frontend/src/index.css, --mf-accent #f97316 in both themes).
+ */
+:root {
+  --ifm-color-primary: #c2410c;
+  --ifm-color-primary-dark: #af3b0b;
+  --ifm-color-primary-darker: #a5370a;
+  --ifm-color-primary-darkest: #882d08;
+  --ifm-color-primary-light: #d5480d;
+  --ifm-color-primary-lighter: #df4b0e;
+  --ifm-color-primary-lightest: #f05b1c;
+  --ifm-code-font-size: 95%;
+  --ifm-heading-font-weight: 700;
+  --ifm-background-color: #f6f8fb;
+  --docusaurus-highlighted-code-line-bg: rgba(249, 115, 22, 0.1);
+  --ifm-menu-color-background-active: rgba(249, 115, 22, 0.08);
+  --ifm-table-stripe-background: rgba(18, 25, 35, 0.03);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #fb923c;
+  --ifm-color-primary-dark: #fa7e1e;
+  --ifm-color-primary-darker: #fa7411;
+  --ifm-color-primary-darkest: #e05d05;
+  --ifm-color-primary-light: #fca65a;
+  --ifm-color-primary-lighter: #fcb067;
+  --ifm-color-primary-lightest: #fdcd9b;
+  --ifm-background-color: #0d1420;
+  --ifm-background-surface-color: #131b28;
+  --ifm-navbar-background-color: #131b28;
+  --ifm-footer-background-color: #0a0f18;
+  --docusaurus-highlighted-code-line-bg: rgba(249, 115, 22, 0.15);
+  --ifm-menu-color-background-active: rgba(249, 115, 22, 0.12);
+  --ifm-table-stripe-background: rgba(230, 235, 242, 0.03);
+}
+
+/* Tables carry most of the reference material; let wide ones scroll instead of overflowing. */
+.markdown table {
+  display: block;
+  overflow-x: auto;
+}
