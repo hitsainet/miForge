@@ -1,0 +1,20 @@
+# Build-context exclusions for `hitsai/miforge-frontend`, whose context is this
+# directory (docker-images.yml: `context: ./frontend`). BuildKit resolves the ignore
+# file per context, so the repository root's `.dockerignore` does NOT apply here.
+#
+# Kept deliberately short. `tests/` is NOT excluded: `tsconfig.app.json` lists it in
+# `include`, so `npm run build` (which is `tsc -b && vite build`) type-checks it, and
+# excluding it would fail the image build on files that are not there.
+
+# Installed and generated
+node_modules
+dist
+coverage
+
+# Playwright output (ADR-016 runs it per screen, not in the image)
+test-results
+playwright-report
+
+# Local env
+.env
+.env.*

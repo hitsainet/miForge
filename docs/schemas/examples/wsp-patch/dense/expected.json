@@ -1,0 +1,8 @@
+{
+  "dtype": "bfloat16",
+  "edited_safetensors_sha256": "a95cf329872cf2eb7db459a7e5edf3ce433094840a5f6cc3f1b865abedbf7b5a",
+  "edited_sha256": {
+    "weight": "f7ff6132c1aa6dda198090d0f7d2ef2c5b052d1159f6b6426887784924d262a0"
+  },
+  "form": "dense"
+}

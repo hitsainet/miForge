@@ -1,0 +1,124 @@
+# Non-secret configuration shared by every container in the backend pod.
+#
+# ⚠ EVERY KEY HERE IS A FIELD SOME SETTINGS CLASS READS — `backend/src/core/config.py`
+# for all but one, and `backend/src/packs/settings.py` for `PACKS_ROOT`. Keep them in
+# step; a key with no field is ignored silently (`extra="ignore"`), which is the quiet
+# half of a typo. `.env.example` is the third copy and the one a developer sees.
+#
+# ⚠ THIS HEADING SAID "a field `core/config.py` READS" UNTIL 2026-10-14, and the
+# inaccuracy had a cost: `packs_root` lives in a different module, so every list written
+# against `core/config.py` alone — this one, and `storage.yaml`'s volumes — missed the
+# pack store entirely, and a committed pack had nowhere durable to live.
+# `test_gitops_is_a_deploy_path.py` now reads BOTH modules, so a root declared in a third
+# one fails there rather than in production.
+#
+# ⚠ NO SECRET IN THIS FILE, EVER. `gitops/` is NOT on `sync-to-clean.yml`'s exclusion
+# list, so this file publishes to the public mirror. Secrets come from the
+# `miforge-secrets` Secret, created out of band — the command is in `postgres.yaml`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: miforge-config
+  namespace: miforge
+data:
+  REDIS_URL: "redis://redis:6379/0"
+  ENVIRONMENT: "prod"
+  LOG_LEVEL: "INFO"
+
+  # ── The three artifact roots (ADR-004; task 8.5) ────────────────────────────────
+  # These match `core/config.py`'s defaults exactly, and are written out anyway: an
+  # operator reading this manifest should not have to read Python to learn where the
+  # product is stored. `storage.yaml` is where the volumes behind them are declared.
+  CHECKPOINT_ROOT: "/data/checkpoints"
+  TRAINER_STATE_ROOT: "/data/trainer-state"
+  PARTS_ROOT: "/data/parts"
+  # D47 (2026-10-18), permanent: extra checkpoint roots miForge READS and never writes.
+  # miServer writes an attached run's checkpoints under its own directory, mounted read-only
+  # here (backend.yaml, storage.yaml); continue looks there after CHECKPOINT_ROOT.
+  # Renamed at ENH-009 P2; any change here bumps backend.yaml's config-rev (CF-27).
+  CHECKPOINT_READ_ROOTS: "/data/miserver-checkpoints"
+  # The fourth root, and the only one NOT declared in `core/config.py` — it is
+  # `packs/settings.py`'s `packs_root`, which that class reads case-insensitively with no
+  # env prefix, so this bare name reaches it. Written out for the same reason as the three
+  # above (an operator should not have to read Python to learn where the product is
+  # stored), and because its absence from every such list is precisely how it ended up
+  # with no volume. It equals the field's own default, so this line configures nothing and
+  # documents everything.
+  PACKS_ROOT: "/data/packs"
+
+  # A cache, named one, and deliberately NOT under any of the three above — mixing a
+  # disposable cache into the directory ADR-004 makes authoritative is how a cleanup
+  # script becomes a data-loss incident.
+  HF_HOME: "/data/hf-cache"
+
+  # ── Optional siblings: PRESENT AND EMPTY, deliberately ──────────────────────────
+  # Empty means UNSET means absent-and-normal (ADR-010). `core/config.py` has a
+  # validator that maps an empty string to `None` for exactly this purpose, so these
+  # two lines configure nothing — they DOCUMENT that the standalone path is the default,
+  # which is the property BRD acceptance criterion 20 pins and the whole 2026-10-13
+  # reframe rests on.
+  #
+  # Filling either in enables that integration. Neither is required for any run type.
+  # miServer:    serving a produced checkpoint, and scoring through its /v1 surface.
+  #              (MISERVER_BASE_URL was MILLM_BASE_URL until ENH-009 P4; since P7 the
+  #              old name is retired and configures nothing.)
+  # miDataworks: dataset parts, selector/grader configurations, the review queue.
+  MISERVER_BASE_URL: ""
+  MIDATAWORKS_BASE_URL: ""
+  # miDataworks' REST surface identifies the caller with this header and has no bearer
+  # gate — three surfaces, three credentials, none shared. Must match
+  # `^agent:[a-z0-9][a-z0-9-]{0,47}$` or the process refuses at startup.
+  MIDATAWORKS_AGENT: "agent:miforge"
+
+  # ── Feature 016 (WSP): weight-space programming ─────────────────────────────────
+  # Read by `backend/src/wsp/settings.py` (environment only, PF-17). Standalone by default:
+  # with WSP_WORKER_URL or WSP_GATEWAY_URL empty every WSP route refuses wsp_not_configured,
+  # with WSP_PROVIDERS_AVAILABLE empty every provider is unavailable, and with
+  # MIWORKBENCH_API_URL empty no bundle can be imported. The operator sets these at FTASKS
+  # 11.2, with WSP_GATEWAY_PUBLIC_KEY; the gateway's private key and WSP_GATEWAY_SERVICE_TOKEN
+  # are Secrets, never here.
+  WSP_BUNDLE_ROOT: "/data/wsp"
+  # The worker's /work volume in bytes: 64 GiB, equal to the `work` emptyDir's sizeLimit (64Gi) in
+  # wsp-worker.yaml; raise both together (test_wsp_worker_work_volume.py keeps them equal). A run
+  # whose push does not fit is refused wsp_bundle_too_large_for_worker before its approval is filed.
+  WSP_WORKER_WORK_BYTES: "68719476736"
+  WSP_WORKER_URL: "http://miforge-wsp-worker:9000"
+  WSP_GATEWAY_URL: "http://miforge-wsp-gateway:8080"
+  # Feature 018-P2 (FTASKS 12.1): miStudio's own engine is enabled beside weightspace. The DEFAULT
+  # provider stays weightspace (wsp/settings.py) until the switch record (018-P3, FTASKS 14.4).
+  WSP_PROVIDERS_AVAILABLE: "weightspace,miwsp_engine"
+  # The gateway's X25519 public key (D15; created 2026-11-17 06:12 ET, FTASKS 11.2). Not secret:
+  # the private half is the Secret miforge-wsp-gateway, mounted by the gateway only.
+  WSP_GATEWAY_PUBLIC_KEY: "qSY8ictfflu4h4bqMaWDeHYxfKQ4w+Sxk0WURQavZUE="
+  WSP_EXTERNAL_SPEND_MAX_USD_PER_DAY: "50"
+  # Queued WSP runs one caller may hold (operator 2026-11-20: 10, was the default 3; the fourth
+  # of four approved runs from one agent failed at execution with wsp_queue_limit_reached). It is
+  # checked when a request is filed AND when its approval executes. Equal to the default in
+  # wsp/settings.py (test_wsp_queue_limit.py keeps them equal).
+  WSP_MAX_QUEUED_PER_CALLER: "10"
+  WSP_EXTERNAL_HOST_ALLOWLIST: "api.anthropic.com"
+  # Set 2026-11-17 once miWorkbench 044-A (the bundle routes) was live: the bundle source for WSP imports.
+  MIWORKBENCH_API_URL: "http://miworkbench-backend.miworkbench.svc.cluster.local:8000"
+
+  # ── F2's masking policy: SET, by suite decision D42 (2026-10-17) ────────────────
+  # Unset, every corpus and self-generation run refuses `sft_masking_policy_not_configured`
+  # (by design: a default would change the objective silently). Found unset in the cluster
+  # during the F11 window: no corpus run could train. `completion_only` is the operator's
+  # intent exactly: a PLAIN-TEXT corpus row becomes prompt="" + completion=text, so EVERY
+  # token of it trains, while prompt/completion data (in a corpus or from self-generation)
+  # keeps its prompt tokens masked. Pinned by test_gitops_is_a_deploy_path.py.
+  SIGNAL_SFT_MASKING_POLICY: "completion_only"
+
+  # ── Jobs (ADR-007) ──────────────────────────────────────────────────────────────
+  # ⚠ A MINIMUM INTERVAL BETWEEN HEARTBEAT WRITES, NOT A MAXIMUM GAP. Anything deriving
+  # a liveness threshold from this number is wrong: a generation-bound test pass or a
+  # 2.4 GB save legitimately exceeds it, and a screen that treated 60 s as a deadline
+  # would show every healthy run as stalled during every save. Read the janitor's
+  # threshold instead.
+  HEARTBEAT_MIN_INTERVAL_SECONDS: "60"
+  # The janitor's lapse threshold. PROVISIONAL: nothing in the product can yet produce
+  # a defensible value, because the measurement that would — the longest observed
+  # heartbeat gap per run (foundation task 6.4b) — does not exist. Revisit with data,
+  # not with judgement.
+  JANITOR_LAPSE_SECONDS: "900"
+  GPU_LEASE_SECONDS: "3600"

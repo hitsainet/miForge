@@ -1,0 +1,23 @@
+{
+  "_comment": "Planted inputs for BOTH brand-guard halves (backend test_brand_guard.py and frontend src/test/brandGuard.test.ts), so their self-tests run on the same strings (feature 015, IPD-7). Each must be a finding in enforced mode. `<private>` in repo_names stands for the private source organisation; the tests substitute it at runtime, so this mirror-bound file does not name the private repositories (015 review).",
+  "tsx_string": "Load in miLLM",
+  "mcp_docstring": "Ask miLLM which model it serves.",
+  "refusal": "miLLM refused the attach call",
+  "gitops_value": "http://millm-backend.millm.svc.cluster.local:8000",
+  "suite_phrase": {
+    "allowed_from_p5": [
+      "part of the miStudio suite",
+      "~/app/miStudio/x"
+    ],
+    "always_denied": [
+      "Open miStudio"
+    ],
+    "misuite": "miSuite"
+  },
+  "repo_names": [
+    "<private>/miLLM",
+    "hitsainet/miLLM",
+    "<private>/miStudio",
+    "hitsainet/miStudio"
+  ]
+}

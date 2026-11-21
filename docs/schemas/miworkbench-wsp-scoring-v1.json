@@ -1,0 +1,718 @@
+{
+  "$id": "https://hitsai.net/schemas/miworkbench-wsp-scoring-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "miWorkbench scores heads miForge proposes on held-out rows miForge never sees. Bars and metrics are per head and per set; every metric is computed from exactly the float32 scores in the response; false_alarms_at_bar is a count. The refusal table is complete for every phase (044-A on).",
+  "endpoint": {
+    "method": "POST",
+    "path": "/api/v1/wsp/score"
+  },
+  "refusals": {
+    "baseline_not_available": {
+      "status": 409,
+      "when": "a baseline:<kind> head names a kind the bundle has not fitted (pending or refused)"
+    },
+    "bundle_kind_unsupported": {
+      "status": 422,
+      "when": "the bundle's kind is not scored by this route in this phase"
+    },
+    "bundle_not_found": {
+      "status": 404,
+      "when": "no bundle has that id"
+    },
+    "bundle_not_ready": {
+      "status": 409,
+      "when": "the bundle is still building, or failed"
+    },
+    "bundle_sha256_mismatch": {
+      "status": 409,
+      "when": "bundle_sha256 is not the bundle's"
+    },
+    "candidate_not_the_registered_patch": {
+      "status": 409,
+      "when": "the candidate is not parent + the run's registered patch, or the run cannot be resolved (miForge unset or unreachable, an unknown run)"
+    },
+    "candidate_outside_patch_limits": {
+      "status": 422,
+      "when": "a head differs from the parent outside the editable tensors, or in more entries than the clamp allows"
+    },
+    "capture_changed": {
+      "status": 409,
+      "when": "a held-out capture is not the one the bundle was sealed on: its rows, row ids or parity record differ from the manifest's heldout_ref and the bundle's seal"
+    },
+    "capture_not_ready": {
+      "status": 409,
+      "when": "a held-out capture of the bundle is not ready"
+    },
+    "capture_parity_failed": {
+      "status": 409,
+      "when": "a held-out capture of the bundle failed parity"
+    },
+    "control_index_out_of_range": {
+      "status": 422,
+      "when": "control:<n> with n at or above the run's control count"
+    },
+    "control_not_the_seeded_permutation": {
+      "status": 409,
+      "when": "a control head is not the run's seeded permutation (016 §6.4)"
+    },
+    "head_shape_mismatch": {
+      "status": 422,
+      "when": "a head's tensor dtype, shape, digest or byte count does not match the parent's"
+    },
+    "head_tensors_required": {
+      "status": 422,
+      "when": "a candidate or control head carries no tensors"
+    },
+    "heldout_ref_mismatch": {
+      "status": 422,
+      "when": "heldout_ref is not exactly the bundle's (a subset or a different set)"
+    },
+    "heldout_set_head_budget_exhausted": {
+      "status": 409,
+      "when": "a requested row has already been read by wsp_score_max_heads_per_set distinct tensor-bearing heads; the answer names the set, its row_ids_sha256 and rows_exhausted (a count)"
+    },
+    "operator_or_service_only": {
+      "status": 403,
+      "when": "an agent caller (X-MiStudio-Agent) may not score"
+    },
+    "parent_tensors_not_accepted": {
+      "status": 422,
+      "when": "a parent or baseline head carries tensors"
+    },
+    "score_timeout": {
+      "status": 503,
+      "when": "the call was still scoring after wsp_score_timeout_seconds; nothing was recorded"
+    },
+    "scorer_busy": {
+      "status": 429,
+      "when": "every scorer slot is in use; retry later"
+    },
+    "too_many_heads": {
+      "status": 422,
+      "when": "more heads than wsp_score_max_heads"
+    }
+  },
+  "request": {
+    "$defs": {
+      "HeadTensor": {
+        "additionalProperties": false,
+        "properties": {
+          "data_b64": {
+            "title": "Data B64",
+            "type": "string"
+          },
+          "dtype": {
+            "enum": [
+              "float32",
+              "float64"
+            ],
+            "title": "Dtype",
+            "type": "string"
+          },
+          "name": {
+            "enum": [
+              "weight",
+              "bias",
+              "mean",
+              "std",
+              "attention_query"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "shape": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "title": "Shape",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "dtype",
+          "shape",
+          "data_b64",
+          "sha256"
+        ],
+        "title": "HeadTensor",
+        "type": "object"
+      },
+      "HeldoutRef": {
+        "additionalProperties": false,
+        "description": "Must equal the bundle's `heldout_ref` exactly (`heldout_ref_mismatch`); its RFC 8785 digest is\n`heldout_ref_sha256` in the response (R3B-13, P65).",
+        "properties": {
+          "owner": {
+            "const": "miworkbench",
+            "title": "Owner",
+            "type": "string"
+          },
+          "sets": {
+            "items": {
+              "$ref": "#/$defs/HeldoutSet"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Sets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "owner",
+          "sets"
+        ],
+        "title": "HeldoutRef",
+        "type": "object"
+      },
+      "HeldoutSet": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "eval",
+              "everyday_text",
+              "nonsense_text",
+              "calibration"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "row_ids_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Row Ids Sha256",
+            "type": "string"
+          },
+          "rows": {
+            "minimum": 0,
+            "title": "Rows",
+            "type": "integer"
+          },
+          "view_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "View Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "view_id",
+          "role",
+          "rows",
+          "row_ids_sha256"
+        ],
+        "title": "HeldoutSet",
+        "type": "object"
+      },
+      "RunRef": {
+        "additionalProperties": false,
+        "description": "The miForge run the call belongs to (P46, R1A-W8, R1B-X15).",
+        "properties": {
+          "max_changed_entries": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Changed Entries"
+          },
+          "miforge_run_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Miforge Run Id",
+            "type": "string"
+          },
+          "patch_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Sha256"
+          }
+        },
+        "required": [
+          "miforge_run_id"
+        ],
+        "title": "RunRef",
+        "type": "object"
+      },
+      "ScoreHead": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "pattern": "^(parent|candidate|control(:(0|[1-9][0-9]{0,3}))?|baseline:(logistic_regression|lda|diff_of_means|threshold_recut|affine_recalibration))$",
+            "title": "Label",
+            "type": "string"
+          },
+          "tensors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/HeadTensor"
+                },
+                "maxItems": 5,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tensors"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "ScoreHead",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "bundle_id": {
+        "pattern": "^wsb_[0-9a-f]{12}$",
+        "title": "Bundle Id",
+        "type": "string"
+      },
+      "bundle_sha256": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Bundle Sha256",
+        "type": "string"
+      },
+      "heads": {
+        "items": {
+          "$ref": "#/$defs/ScoreHead"
+        },
+        "maxItems": 64,
+        "minItems": 1,
+        "title": "Heads",
+        "type": "array"
+      },
+      "heldout_ref": {
+        "$ref": "#/$defs/HeldoutRef"
+      },
+      "kind": {
+        "const": "miworkbench.wsp-score-request/v1",
+        "title": "Kind",
+        "type": "string"
+      },
+      "primary_sets": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "title": "Primary Sets",
+        "type": "array"
+      },
+      "run_ref": {
+        "$ref": "#/$defs/RunRef"
+      }
+    },
+    "required": [
+      "kind",
+      "bundle_id",
+      "bundle_sha256",
+      "run_ref",
+      "heldout_ref",
+      "heads"
+    ],
+    "title": "WspScoreRequest",
+    "type": "object"
+  },
+  "response": {
+    "$defs": {
+      "Bar": {
+        "additionalProperties": false,
+        "properties": {
+          "n_negatives": {
+            "minimum": 0,
+            "title": "N Negatives",
+            "type": "integer"
+          },
+          "realised_fpr": {
+            "title": "Realised Fpr",
+            "type": "number"
+          },
+          "source": {
+            "enum": [
+              "calibration",
+              "practice",
+              "practice_logit_zero"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "target_fpr": {
+            "title": "Target Fpr",
+            "type": "number"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          }
+        },
+        "required": [
+          "threshold",
+          "source",
+          "n_negatives",
+          "realised_fpr",
+          "target_fpr"
+        ],
+        "title": "Bar",
+        "type": "object"
+      },
+      "Excluded": {
+        "additionalProperties": false,
+        "properties": {
+          "truncated": {
+            "minimum": 0,
+            "title": "Truncated",
+            "type": "integer"
+          },
+          "truncated_fired": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Truncated Fired",
+            "type": "object"
+          }
+        },
+        "required": [
+          "truncated",
+          "truncated_fired"
+        ],
+        "title": "Excluded",
+        "type": "object"
+      },
+      "FunctionInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "layer": {
+            "title": "Layer",
+            "type": "integer"
+          },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "skip_template_prefix": {
+            "title": "Skip Template Prefix",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rule",
+          "params",
+          "layer",
+          "scope",
+          "skip_template_prefix"
+        ],
+        "title": "FunctionInfo",
+        "type": "object"
+      },
+      "Metrics": {
+        "additionalProperties": false,
+        "description": "`false_alarms_at_bar` is a COUNT; the rate is `false_alarms_at_bar / negatives` (R1B-X3). Every metric is\ncomputed from exactly the float32 scores in the response.",
+        "properties": {
+          "auroc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auroc"
+          },
+          "false_alarms_at_bar": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "False Alarms At Bar"
+          },
+          "negatives": {
+            "minimum": 0,
+            "title": "Negatives",
+            "type": "integer"
+          },
+          "positives": {
+            "minimum": 0,
+            "title": "Positives",
+            "type": "integer"
+          },
+          "recall_at_bar": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall At Bar"
+          }
+        },
+        "required": [
+          "auroc",
+          "recall_at_bar",
+          "false_alarms_at_bar",
+          "negatives",
+          "positives"
+        ],
+        "title": "Metrics",
+        "type": "object"
+      },
+      "SetResult": {
+        "additionalProperties": false,
+        "description": "The calibration set (role `calibration`) carries no `scores`, `labels` or `metrics`: each is absent or null\n(it produces bars only).",
+        "if": {
+          "properties": {
+            "role": {
+              "const": "calibration"
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "properties": {
+          "bars": {
+            "additionalProperties": {
+              "$ref": "#/$defs/Bar"
+            },
+            "title": "Bars",
+            "type": "object"
+          },
+          "excluded": {
+            "$ref": "#/$defs/Excluded"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    0,
+                    1
+                  ],
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Labels"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/$defs/Metrics"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Metrics"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "eval",
+              "everyday_text",
+              "nonsense_text",
+              "calibration"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "row_ids_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Row Ids Sha256",
+            "type": "string"
+          },
+          "rows": {
+            "minimum": 0,
+            "title": "Rows",
+            "type": "integer"
+          },
+          "scored_row_ids_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Scored Row Ids Sha256",
+            "type": "string"
+          },
+          "scores": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scores"
+          },
+          "view_id": {
+            "title": "View Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "view_id",
+          "role",
+          "row_ids_sha256",
+          "scored_row_ids_sha256",
+          "rows",
+          "excluded",
+          "bars"
+        ],
+        "then": {
+          "properties": {
+            "labels": {
+              "type": "null"
+            },
+            "metrics": {
+              "type": "null"
+            },
+            "scores": {
+              "type": "null"
+            }
+          }
+        },
+        "title": "SetResult",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "No activation field and no text, ever (P46; 7.4's leak test pins the exact key sets).",
+    "properties": {
+      "bundle_sha256": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Bundle Sha256",
+        "type": "string"
+      },
+      "call_id": {
+        "pattern": "^wsc_[0-9a-f]{12}$",
+        "title": "Call Id",
+        "type": "string"
+      },
+      "function": {
+        "$ref": "#/$defs/FunctionInfo"
+      },
+      "heldout_ref_sha256": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Heldout Ref Sha256",
+        "type": "string"
+      },
+      "kind": {
+        "const": "miworkbench.wsp-score-result/v1",
+        "title": "Kind",
+        "type": "string"
+      },
+      "scored_at": {
+        "title": "Scored At",
+        "type": "string"
+      },
+      "sets": {
+        "items": {
+          "$ref": "#/$defs/SetResult"
+        },
+        "title": "Sets",
+        "type": "array"
+      }
+    },
+    "required": [
+      "kind",
+      "bundle_sha256",
+      "heldout_ref_sha256",
+      "function",
+      "sets",
+      "scored_at",
+      "call_id"
+    ],
+    "title": "WspScoreResponse",
+    "type": "object"
+  },
+  "title": "miWorkbench WSP scoring contract (POST /api/v1/wsp/score)",
+  "version": 1
+}

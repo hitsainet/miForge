@@ -1,0 +1,67 @@
+# miForge Admin UI — the built React app served by nginx, which also PROXIES the API so
+# the browser only ever addresses one origin (ADR-011, ADR-012, ADR-022).
+#
+# Image tag/digest managed by ArgoCD Image Updater — do not hand-edit.
+#
+# NO GPU: `nvidia.com/gpu` is absent here as it is everywhere, and unlike the backend
+# pod there is no `NVIDIA_VISIBLE_DEVICES` either. ADR-019: "the backend pod needs the
+# GPU; the frontend does not."
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miforge-frontend
+  namespace: miforge
+spec:
+  replicas: 1
+  # A rolling update is fine here, unlike the backend: static files, no GPU, no lease,
+  # no run to interrupt. Stated rather than left to the default so the contrast with
+  # `backend.yaml`'s `Recreate` reads as a decision.
+  selector:
+    matchLabels:
+      app: miforge-frontend
+  template:
+    metadata:
+      labels:
+        app: miforge-frontend
+    spec:
+      # Not pinned. The frontend holds no data and no device, so it may run anywhere —
+      # it reaches the backend through a Service. The absence of a nodeSelector here is
+      # deliberate and is the only pod in this tree without one.
+      containers:
+        - name: frontend
+          image: hitsai/miforge-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            # 8080, not 80: the image is nginx-unprivileged (uid 101) and cannot bind a
+            # privileged port.
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              # nginx's own `/health`, which answers while the backend is down. A
+              # frontend marked unready because the API is unhealthy would be taken out
+              # of service for someone else's fault — and would then be unable to serve
+              # the screen that reports the problem.
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 101
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: miforge-frontend
+  namespace: miforge
+spec:
+  selector:
+    app: miforge-frontend
+  ports:
+    - port: 80
+      targetPort: 8080

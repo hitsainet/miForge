@@ -1,0 +1,149 @@
+# The WSP worker (feature 016; FTDD §8.1, FTID §3.2): the one place miForge runs code it did not
+# write - an editor LLM's tool calls and programs, through the `weightspace` library.
+#
+# CONTAINMENT IS THIS FILE. Every security line below is pinned by its own test in
+# backend/tests/unit/wsp/test_wsp_worker_containment.py, and deleting any one of them turns exactly
+# that test red (controls C10a-C10m). In short:
+#   - no credential (D20): the env is a literal list with no secretKeyRef, no envFrom, no Secret
+#     volume; the one secret a session ever sees is its gateway token, written to the child's stdin;
+#   - no Kubernetes permission (D14): no service account token, no serviceAccountName, no RBAC;
+#   - no network but the gateway (P49): wsp-networkpolicy.yaml; and no DNS (P37): dnsPolicy None;
+#   - its own uid 10002 (not the backend's 10001), a read-only root, seccomp RuntimeDefault, every
+#     capability dropped, no host namespace, its own PID namespace;
+#   - the supervisor is PID 1 and serves ONE session per process: after the result is pulled and
+#     acknowledged it wipes /work, /out, /tmp, /dev/shm and IPC, and exits; Kubernetes restarts it
+#     with a fresh boot_id (P49, P51). Hence `strategy: Recreate`, one replica.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miforge-wsp-worker
+  namespace: miforge
+  labels:
+    app.kubernetes.io/name: miforge-wsp-worker
+    app.kubernetes.io/component: wsp-worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: miforge-wsp-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: miforge-wsp-worker
+        app.kubernetes.io/component: wsp-worker
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      dnsPolicy: None
+      dnsConfig:
+        nameservers: ["127.0.0.1"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: supervisor
+          image: hitsai/miforge-wsp-worker:latest
+          imagePullPolicy: IfNotPresent
+          args: ["supervisor"]
+          ports:
+            - name: supervisor
+              containerPort: 9000
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: void
+            - name: WSP_WORKER_PORT
+              value: "9000"
+            - name: WSP_ENVIRONMENT
+              value: prod
+            - name: OMP_NUM_THREADS
+              value: "1"
+            - name: OPENBLAS_NUM_THREADS
+              value: "1"
+            - name: MKL_NUM_THREADS
+              value: "1"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10002
+            runAsGroup: 10002
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          terminationMessagePath: /tmp/termination-log
+          terminationMessagePolicy: File
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 9000
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 2
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 1Gi
+            limits:
+              cpu: "2"
+              memory: 6Gi
+              # Above the `work` emptyDir's sizeLimit (64Gi) so the volume, not this, is what binds:
+              # the pod's ephemeral total is /work plus logs (the root is read-only and the other
+              # volumes are Memory-backed). Production defect 2026-11-20: 10Gi with an 8Gi /work
+              # evicted the worker mid-push of a 35 GB bundle.
+              ephemeral-storage: 72Gi
+          volumeMounts:
+            - name: work
+              mountPath: /work
+            - name: out
+              mountPath: /out
+            - name: tmp
+              mountPath: /tmp
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        # /work holds every pushed file (a phase-2 bundle is ~35 GB) plus the session's own files.
+        # Provisioned, not a design limit (suite rule: storage does not constrain design). Equal to
+        # WSP_WORKER_WORK_BYTES in config.yaml (test_wsp_worker_work_volume.py); the backend refuses
+        # a run that cannot fit (wsp_bundle_too_large_for_worker) and sets the disk watchdog 4 GiB
+        # below it (backend/src/wsp/capacity.py).
+        - name: work
+          emptyDir:
+            sizeLimit: 64Gi
+        - name: out
+          emptyDir:
+            medium: Memory
+            sizeLimit: 512Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi
+---
+# The driver (miforge.wsp.drive, in the backend pod) pushes each session to the supervisor here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: miforge-wsp-worker
+  namespace: miforge
+  labels:
+    app.kubernetes.io/name: miforge-wsp-worker
+spec:
+  selector:
+    app.kubernetes.io/name: miforge-wsp-worker
+  ports:
+    - name: supervisor
+      port: 9000
+      targetPort: 9000

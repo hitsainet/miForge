@@ -1,0 +1,283 @@
+{
+  "$defs": {
+    "Append": {
+      "additionalProperties": false,
+      "description": "Phase 4, SAE features only; refused otherwise.",
+      "properties": {
+        "axis": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "count": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "axis",
+        "count"
+      ],
+      "type": "object"
+    },
+    "CreatedBy": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "maxLength": 64,
+          "type": "string"
+        },
+        "provider_version": {
+          "maxLength": 32,
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "provider_version",
+        "run_id"
+      ],
+      "type": "object"
+    },
+    "PatchParent": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "bundle",
+            "bundle_zeroed",
+            "candidate",
+            "checkpoint"
+          ],
+          "type": "string"
+        },
+        "patch_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Set when kind is candidate."
+        },
+        "ref": {
+          "description": "bundle_sha256, candidate_id or checkpoint name.",
+          "maxLength": 512,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "patch_sha256",
+        "ref"
+      ],
+      "type": "object"
+    },
+    "PatchTensor": {
+      "additionalProperties": false,
+      "properties": {
+        "append": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Append"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base_sha256": {
+          "description": "Raw bits of the base tensor.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "changed_entries": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dtype": {
+          "enum": [
+            "float32",
+            "float16",
+            "bfloat16",
+            "float64"
+          ],
+          "type": "string"
+        },
+        "edited_sha256": {
+          "description": "Raw bits of the edited tensor.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "edited_shape": {
+          "description": "Equal to shape unless append.",
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "form": {
+          "description": "sparse: e = base_bits; e[idx] = val (raw bits). lowrank: float64(base) plus one rank-one term outer(a[:,k], b[k]) at a time, cast, then the sparse fix-ups. dense: t<i>_bits is the full edited tensor's bits.",
+          "enum": [
+            "sparse",
+            "lowrank",
+            "dense"
+          ],
+          "type": "string"
+        },
+        "index": {
+          "description": "i in the edit.npz array names t<i>_idx, t<i>_val, t<i>_a, t<i>_b, t<i>_bits.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "l2_delta": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "max_abs_delta": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "name": {
+          "description": "A tensor of the parent: one of the bundle's tensor names for a probe or SAE bundle; the backend refuses any name the parent does not hold. Unique within tensors[].",
+          "pattern": "^[A-Za-z0-9_.\\-]{1,256}$",
+          "type": "string"
+        },
+        "rank": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "lowrank only."
+        },
+        "shape": {
+          "description": "The base shape.",
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "append",
+        "base_sha256",
+        "changed_entries",
+        "dtype",
+        "edited_sha256",
+        "edited_shape",
+        "form",
+        "index",
+        "l2_delta",
+        "max_abs_delta",
+        "name",
+        "rank",
+        "shape"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "miforge-wsp-patch-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "patch.json, beside edit.npz in a patch folder. The array layout follows wsplab's (sparse, lowrank with fix-ups, dense).",
+  "properties": {
+    "arrays_file": {
+      "const": "edit.npz",
+      "type": "string"
+    },
+    "arrays_sha256": {
+      "description": "sha256 of the edit.npz file's bytes.",
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "bundle_base_sha256": {
+      "description": "The bundle the chain starts from.",
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "changed_entries_total": {
+      "description": "A patch that changes nothing is never written (P22).",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "content_sha256": {
+      "description": "RFC 8785 sha256 of {bundle_base_sha256, parent, tensors} only: the identity of what the patch does (P54, R1B-A1).",
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "RFC 3339 UTC.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "created_by": {
+      "$ref": "#/$defs/CreatedBy"
+    },
+    "format_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "kind": {
+      "const": "miforge.wsp-patch/v1",
+      "type": "string"
+    },
+    "parent": {
+      "$ref": "#/$defs/PatchParent"
+    },
+    "parent_patch_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The chain link (P21): set only when the request chains."
+    },
+    "patch_sha256": {
+      "description": "RFC 8785 sha256 of this object without patch_sha256.",
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "tensors": {
+      "description": "Unique by name.",
+      "items": {
+        "$ref": "#/$defs/PatchTensor"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "arrays_file",
+    "arrays_sha256",
+    "bundle_base_sha256",
+    "changed_entries_total",
+    "content_sha256",
+    "created_at",
+    "created_by",
+    "format_version",
+    "kind",
+    "parent",
+    "parent_patch_sha256",
+    "patch_sha256",
+    "tensors"
+  ],
+  "title": "miForge WSP patch v1",
+  "type": "object"
+}

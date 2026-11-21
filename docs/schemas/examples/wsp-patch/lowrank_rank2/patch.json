@@ -1,0 +1,45 @@
+{
+  "arrays_file": "edit.npz",
+  "arrays_sha256": "526efaf6d88e4679dfecd612620b9773b9c93b5dae44345e4215cd28b79df594",
+  "bundle_base_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "changed_entries_total": 960,
+  "content_sha256": "0403bce78e3d0eb24b07f0ff4e9d8259050d3bfef2b9038800af6e8afae70113",
+  "created_at": "2026-11-16T05:00:00Z",
+  "created_by": {
+    "provider": "weightspace",
+    "provider_version": "0.3.0",
+    "run_id": "wsp_0123456789ab"
+  },
+  "format_version": 1,
+  "kind": "miforge.wsp-patch/v1",
+  "parent": {
+    "kind": "bundle",
+    "patch_sha256": null,
+    "ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "parent_patch_sha256": null,
+  "patch_sha256": "b14b902c8369a9a38528b40683d84aa7309fdb1b1400194356f3997262b16f24",
+  "tensors": [
+    {
+      "append": null,
+      "base_sha256": "628d7ffffe2b0b42e33c7f9770bac348e58f0d3ad170cb9dc81b7f00008f4e40",
+      "changed_entries": 960,
+      "dtype": "float32",
+      "edited_sha256": "2542c5ea89dfce88bca8f9eb38089bde22e0a30379a4ba0cf0c8835d0ebe77cf",
+      "edited_shape": [
+        24,
+        40
+      ],
+      "form": "lowrank",
+      "index": 0,
+      "l2_delta": 3.1173524850949836,
+      "max_abs_delta": 1.037945568561554,
+      "name": "W_dec",
+      "rank": 2,
+      "shape": [
+        24,
+        40
+      ]
+    }
+  ]
+}

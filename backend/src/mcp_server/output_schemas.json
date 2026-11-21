@@ -1,0 +1,796 @@
+{
+ "typed": {
+  "forge_evaluate_completions": {
+   "$defs": {
+    "VerdictOut": {
+     "additionalProperties": false,
+     "description": "One verdict as the wire carries it, with its provenance.",
+     "properties": {
+      "caveats": {
+       "items": {
+        "type": "string"
+       },
+       "title": "Caveats",
+       "type": "array"
+      },
+      "judge": {
+       "anyOf": [
+        {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Judge"
+      },
+      "match_metric": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Match Metric"
+      },
+      "match_mode": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Match Mode"
+      },
+      "reason": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Reason"
+      },
+      "reason_code": {
+       "title": "Reason Code",
+       "type": "string"
+      },
+      "review_item_id": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Review Item Id"
+      },
+      "score": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Score"
+      },
+      "selector": {
+       "title": "Selector",
+       "type": "string"
+      },
+      "value": {
+       "title": "Value",
+       "type": "string"
+      }
+     },
+     "required": [
+      "value",
+      "selector",
+      "reason_code",
+      "reason",
+      "score"
+     ],
+     "title": "VerdictOut",
+     "type": "object"
+    }
+   },
+   "additionalProperties": true,
+   "properties": {
+    "approval": {
+     "type": "object"
+    },
+    "config_kind": {
+     "title": "Config Kind",
+     "type": "string"
+    },
+    "config_sha256": {
+     "title": "Config Sha256",
+     "type": "string"
+    },
+    "hash_provenance": {
+     "title": "Hash Provenance",
+     "type": "string"
+    },
+    "hashes": {
+     "additionalProperties": true,
+     "title": "Hashes",
+     "type": "object"
+    },
+    "health": {
+     "additionalProperties": true,
+     "title": "Health",
+     "type": "object"
+    },
+    "next_steps": {
+     "items": {
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "reason": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "unavailable": {
+     "type": "string"
+    },
+    "verdicts": {
+     "items": {
+      "$ref": "#/$defs/VerdictOut"
+     },
+     "title": "Verdicts",
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "forge_get_approval_status": {
+   "additionalProperties": true,
+   "properties": {
+    "action": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Action"
+    },
+    "approval": {
+     "type": "object"
+    },
+    "approval_id": {
+     "title": "Approval Id",
+     "type": "string"
+    },
+    "batch_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Batch Id"
+    },
+    "created_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Created At"
+    },
+    "decided_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Decided At"
+    },
+    "decided_by": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Decided By"
+    },
+    "error": {
+     "title": "Error"
+    },
+    "expires_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Expires At"
+    },
+    "next_steps": {
+     "items": {
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "payload": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Payload"
+    },
+    "reason": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "request_digest": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Request Digest"
+    },
+    "requested_by": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Requested By"
+    },
+    "result": {
+     "title": "Result"
+    },
+    "status": {
+     "title": "Status",
+     "type": "string"
+    },
+    "summary": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Summary"
+    },
+    "unavailable": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "forge_list_approvals": {
+   "$defs": {
+    "ApprovalObject": {
+     "additionalProperties": true,
+     "description": "The suite's ``approval`` object (``mistudio.result-language/v1`` ``$defs.approval``).",
+     "properties": {
+      "action": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Action"
+      },
+      "decide_in": {
+       "title": "Decide In",
+       "type": "string"
+      },
+      "expires_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expires At"
+      },
+      "id": {
+       "title": "Id",
+       "type": "string"
+      },
+      "reason": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Reason"
+      },
+      "status": {
+       "title": "Status",
+       "type": "string"
+      },
+      "summary": {
+       "title": "Summary",
+       "type": "string"
+      },
+      "then": {
+       "title": "Then",
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "status",
+      "decide_in",
+      "then",
+      "summary"
+     ],
+     "title": "ApprovalObject",
+     "type": "object"
+    },
+    "ApprovalView": {
+     "additionalProperties": true,
+     "description": "One approval on the wire: ``as_payload``'s keys, typed, plus ``approval``.",
+     "properties": {
+      "action": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Action"
+      },
+      "approval": {
+       "$ref": "#/$defs/ApprovalObject"
+      },
+      "approval_id": {
+       "title": "Approval Id",
+       "type": "string"
+      },
+      "batch_id": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Batch Id"
+      },
+      "created_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Created At"
+      },
+      "decided_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Decided At"
+      },
+      "decided_by": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Decided By"
+      },
+      "error": {
+       "title": "Error"
+      },
+      "expires_at": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expires At"
+      },
+      "payload": {
+       "anyOf": [
+        {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Payload"
+      },
+      "reason": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Reason"
+      },
+      "request_digest": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Request Digest"
+      },
+      "requested_by": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Requested By"
+      },
+      "result": {
+       "title": "Result"
+      },
+      "status": {
+       "title": "Status",
+       "type": "string"
+      },
+      "summary": {
+       "anyOf": [
+        {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Summary"
+      }
+     },
+     "required": [
+      "approval_id",
+      "status",
+      "approval"
+     ],
+     "title": "ApprovalView",
+     "type": "object"
+    }
+   },
+   "additionalProperties": true,
+   "properties": {
+    "approval": {
+     "type": "object"
+    },
+    "approvals": {
+     "items": {
+      "$ref": "#/$defs/ApprovalView"
+     },
+     "title": "Approvals",
+     "type": "array"
+    },
+    "count": {
+     "title": "Count",
+     "type": "integer"
+    },
+    "limit": {
+     "title": "Limit",
+     "type": "integer"
+    },
+    "next_steps": {
+     "items": {
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "pending": {
+     "title": "Pending",
+     "type": "integer"
+    },
+    "reason": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "unavailable": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "forge_list_packs": {
+   "additionalProperties": true,
+   "properties": {
+    "approval": {
+     "type": "object"
+    },
+    "next_steps": {
+     "items": {
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "packs": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Packs",
+     "type": "array"
+    },
+    "reason": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "unavailable": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "forge_list_selectors": {
+   "$defs": {
+    "CapabilityView": {
+     "additionalProperties": false,
+     "description": "One row of ``GET /api/v1/selectors``: the declaration plus live availability.\n\n``available`` is computed **per call from injected settings**, never cached at import.\nA module global would freeze the answer, so an operator who configures miDataworks\nwould be told the type is still unavailable until something restarted (FTID I-3).",
+     "properties": {
+      "available": {
+       "title": "Available",
+       "type": "boolean"
+      },
+      "forms": {
+       "items": {
+        "type": "string"
+       },
+       "title": "Forms",
+       "type": "array"
+      },
+      "name": {
+       "enum": [
+        "rule",
+        "judge_model",
+        "reference_match",
+        "human_review",
+        "composite"
+       ],
+       "title": "Name",
+       "type": "string"
+      },
+      "requires": {
+       "$ref": "#/$defs/Requirement"
+      },
+      "summary": {
+       "title": "Summary",
+       "type": "string"
+      },
+      "unavailable_reason": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Unavailable Reason"
+      }
+     },
+     "required": [
+      "name",
+      "forms",
+      "requires",
+      "summary",
+      "available"
+     ],
+     "title": "CapabilityView",
+     "type": "object"
+    },
+    "Requirement": {
+     "description": "What a selector type needs before it can answer.\n\nThree values, not four: **embedding similarity is not here** because\n``selector-config-v1.json`` cut it. R-02.9's amendment offered it, R-02.49's provider\nabstraction is scoped to generation, and *\"embedding\"* occurs exactly once in the whole\nof BRD-02 - in that amendment. A requirement for a capability with no mechanism is the\nmissing-load-call shape, so the contract refuses the mode and this enum has no row for\nit.",
+     "enum": [
+      "none",
+      "generation_provider",
+      "midataworks"
+     ],
+     "title": "Requirement",
+     "type": "string"
+    }
+   },
+   "additionalProperties": true,
+   "properties": {
+    "approval": {
+     "type": "object"
+    },
+    "next_steps": {
+     "items": {
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "reason": {
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "result": {
+     "items": {
+      "$ref": "#/$defs/CapabilityView"
+     },
+     "title": "Response List Selectors Api V1 Selectors Get",
+     "type": "array"
+    },
+    "unavailable": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  }
+ },
+ "untyped": {
+  "forge_archive_part": "the route answers an untyped dict",
+  "forge_archive_run": "the route answers an untyped dict",
+  "forge_attachment_status": "the route answers an untyped dict",
+  "forge_cancel_run": "the route answers an untyped dict",
+  "forge_check_hub_revision": "the route answers an untyped dict",
+  "forge_check_provider": "the route answers an untyped dict",
+  "forge_clone_pack": "the route answers an untyped dict",
+  "forge_commit_draft": "the route answers an untyped dict",
+  "forge_commit_draft_step": "the route answers an untyped dict",
+  "forge_continue_run": "the route answers an untyped dict",
+  "forge_create_chain": "the route answers an untyped dict",
+  "forge_create_draft": "the route answers an untyped dict",
+  "forge_create_pack": "the route answers an untyped dict",
+  "forge_define_run": "the route answers an untyped dict",
+  "forge_delete_draft": "the route answers an untyped dict",
+  "forge_delete_pack": "the route answers an untyped dict",
+  "forge_dry_run_draft": "the route answers an untyped dict",
+  "forge_estimate_budget": "the route answers an untyped dict",
+  "forge_evaluate_now": "the route answers an untyped dict",
+  "forge_export_pack": "the route answers an untyped dict",
+  "forge_get_adapter": "answers a registry row with the manifest inside, not adapter-manifest-v1",
+  "forge_get_batch": "answers a route-built body around batch-record-v1",
+  "forge_get_chain": "the route answers an untyped dict",
+  "forge_get_checkpoint": "answers {manifest, ...}: the manifest wrapped",
+  "forge_get_checkpoint_lineage": "the route answers an untyped dict",
+  "forge_get_draft": "the route answers an untyped dict",
+  "forge_get_pack": "the route answers an untyped dict",
+  "forge_get_pack_lineage": "the route answers an untyped dict",
+  "forge_get_pack_part_ref": "the route answers an untyped dict",
+  "forge_get_pack_validity": "the route answers an untyped dict",
+  "forge_get_part": "the route answers an untyped dict",
+  "forge_get_run": "the route answers an untyped dict",
+  "forge_get_run_definition": "the route answers an untyped dict",
+  "forge_get_run_review": "the route answers an untyped dict",
+  "forge_get_run_stop_conditions": "the route answers an untyped dict",
+  "forge_get_scores_at_step": "the route answers an untyped dict",
+  "forge_get_settings": "the route answers an untyped dict",
+  "forge_get_settings_history": "the route answers an untyped dict",
+  "forge_get_tree": "the route answers an untyped dict",
+  "forge_health": "the route answers an untyped dict",
+  "forge_host_resources": "the route answers an untyped dict",
+  "forge_howto": "makes no backend call",
+  "forge_import_pack": "the route answers an untyped dict",
+  "forge_import_part": "the route answers an untyped dict",
+  "forge_list_adapters": "the route answers an untyped dict",
+  "forge_list_all_checkpoints": "the route answers an untyped dict",
+  "forge_list_approval_actions": "the route answers an untyped dict",
+  "forge_list_batches": "the route answers an untyped dict",
+  "forge_list_boundaries": "the route answers an untyped dict",
+  "forge_list_chains": "the route answers an untyped dict",
+  "forge_list_checkpoints": "the route answers an untyped dict",
+  "forge_list_drafts": "the route answers an untyped dict",
+  "forge_list_gpus": "the route answers an untyped dict",
+  "forge_list_local_models": "the route answers an untyped dict",
+  "forge_list_local_tokenizers": "the route answers an untyped dict",
+  "forge_list_merges": "the route answers an untyped dict",
+  "forge_list_model_sources": "the route answers an untyped dict",
+  "forge_list_parts": "the route answers an untyped dict",
+  "forge_list_providers": "the route answers an untyped dict",
+  "forge_list_refresh_modes": "the route answers an untyped dict",
+  "forge_list_run_types": "the route answers an untyped dict",
+  "forge_list_runs": "the route answers an untyped dict",
+  "forge_list_scores": "the route answers an untyped dict",
+  "forge_list_signal_sources": "the route answers an untyped dict",
+  "forge_list_steps": "answers {steps, ...}: a page object, not a list of step-record-v1",
+  "forge_list_stop_conditions": "the route answers an untyped dict",
+  "forge_merge_adapter": "the route answers an untyped dict",
+  "forge_midataworks_available_parts": "the route answers an untyped dict",
+  "forge_midataworks_status": "the route answers an untyped dict",
+  "forge_plan_branch": "the route answers an untyped dict",
+  "forge_plan_continue": "the route answers an untyped dict",
+  "forge_preflight_signal_source": "the route answers an untyped dict",
+  "forge_request_save": "the route answers an untyped dict",
+  "forge_reset_setting": "the route answers an untyped dict",
+  "forge_review_draft": "the route answers an untyped dict",
+  "forge_sample_slot": "the route answers an untyped dict",
+  "forge_score_sample": "the route answers an untyped dict",
+  "forge_set_setting": "the route answers an untyped dict",
+  "forge_stop_chain": "the route answers an untyped dict",
+  "forge_submit_run": "the route answers an untyped dict",
+  "forge_unarchive_part": "the route answers an untyped dict",
+  "forge_unarchive_run": "the route answers an untyped dict",
+  "forge_validate_part": "the route answers an untyped dict",
+  "forge_validate_run": "the route answers an untyped dict",
+  "forge_verify_checkpoint": "the route answers an untyped dict",
+  "forge_wsp_register_endpoint": "the route answers an untyped dict",
+  "forge_wsp_start_run": "the route answers an untyped dict",
+  "forge_wsp_test_endpoint_protocol": "the route answers an untyped dict"
+ }
+}
