@@ -1,0 +1,129 @@
+# The WSP gateway (feature 016; FR-016.15, FTDD §5.5, §8.5): the worker's only way out. It meters
+# and forwards an editor LLM's calls, with the request rebuilt from an allow-list, the output cap
+# inserted, and every call reserved and settled in the backend through the internal application.
+#
+# Pinned by backend/tests/unit/wsp/test_wsp_gateway_manifest.py:
+#   - no database, Redis or broker env, no envFrom, no volume (spend is the backend's; R1B-M7);
+#   - the Secret `miforge-wsp-gateway` (key WSP_GATEWAY_PRIVATE_KEY, the X25519 key that opens the
+#     sealed endpoint keys; D15) is referenced by THIS Deployment only (R1B-M9);
+#   - WSP_GATEWAY_SERVICE_TOKEN is mounted here and in the backend's `wsp-internal` container only;
+#   - NVIDIA_VISIBLE_DEVICES=void, every capability dropped, a read-only root, limits.
+# Both Secrets are optional so the pod starts before the operator's FTASKS 11.2 step: until then it
+# serves /health and refuses every session (no service token: nothing resolves; no private key:
+# no external key opens).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miforge-wsp-gateway
+  namespace: miforge
+  labels:
+    app.kubernetes.io/name: miforge-wsp-gateway
+    app.kubernetes.io/component: wsp-gateway
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: miforge-wsp-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: miforge-wsp-gateway
+        app.kubernetes.io/component: wsp-gateway
+      annotations:
+        # CF-27: the gateway reads miforge-config (both host allowlists) at start; the commit that
+        # changes config.yaml's data bumps this, as backend.yaml's does.
+        rebrand.hitsai/config-rev: "o14-siblings"
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: wsp-gateway
+          image: hitsai/miforge-backend:latest
+          imagePullPolicy: Always
+          command: ["python", "-m", "wsp_gateway"]
+          ports:
+            - name: gateway
+              containerPort: 8080
+          env:
+            - name: WSP_INTERNAL_URL
+              value: http://miforge-wsp-internal:8001
+            - name: WSP_GATEWAY_PORT
+              value: "8080"
+            - name: WSP_EXTERNAL_HOST_ALLOWLIST
+              valueFrom:
+                configMapKeyRef:
+                  name: miforge-config
+                  key: WSP_EXTERNAL_HOST_ALLOWLIST
+            - name: WSP_LOCAL_HOST_ALLOWLIST
+              valueFrom:
+                configMapKeyRef:
+                  name: miforge-config
+                  key: WSP_LOCAL_HOST_ALLOWLIST
+            - name: WSP_GATEWAY_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-secrets
+                  key: WSP_GATEWAY_SERVICE_TOKEN
+                  optional: true
+            - name: WSP_GATEWAY_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: miforge-wsp-gateway
+                  key: WSP_GATEWAY_PRIVATE_KEY
+                  optional: true
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: void
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+---
+# The worker reaches the gateway here (by the Service's IP: the worker has no DNS, P37).
+apiVersion: v1
+kind: Service
+metadata:
+  name: miforge-wsp-gateway
+  namespace: miforge
+  labels:
+    app.kubernetes.io/name: miforge-wsp-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: miforge-wsp-gateway
+  ports:
+    - name: gateway
+      port: 8080
+      targetPort: 8080

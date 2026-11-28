@@ -1,0 +1,91 @@
+# hitsai/miforge-wsp-worker - the WSP worker: the one place miForge runs code it did not write
+# (feature 016; FR-016.9, FR-016.10, FR-016.25; FTDD §8.1, §11; FTID §2.3, §3.2; D12, D20, P49, P62).
+#
+# Built from the REPOSITORY ROOT (`docker build -f backend/Dockerfile.wsp-worker .`), like the
+# backend image, so it can take `backend/requirements-wsp-worker.txt` and the lock check; the root
+# `.dockerignore` keeps the context small. It runs as the Deployment `miforge-wsp-worker`
+# (`gitops/pilot/wsp-worker.yaml`), whose `args: ["supervisor"]` reach the ENTRYPOINT below.
+#
+# ── TWO TARGETS, AND THE TEST ONE IS THE PROD ONE PLUS TEST LAYERS (R3A-23) ─────────────────────
+# * `prod`: what the mirror publishes (`docker-images.yml` pins `target: prod`, and
+#   `backend/tests/unit/test_worker_image_target.py` fails if it does not; P62, R2A-19). No pytest.
+# * `test`: `prod` plus pytest (with its dependencies) and, once the gateway exists (FTASKS 6.5),
+#   `wsp_gateway/allowlist.py` for the real-body test. The private-CI job (`backend-tests.yml`
+#   `wsp-worker-image`, `backend/scripts/wsp_worker_image_job.py`) asserts that `prod`'s layer
+#   digests are a PREFIX of `test`'s and that the extra layers add nothing else, so the live tests
+#   exercise the shipped bits. The tests themselves are never copied in: they are mounted
+#   read-only at run time.
+#
+# ── WHAT IS NOT HERE, ON PURPOSE ───────────────────────────────────────────────────────────────
+# No torch, no database driver, no Redis or Celery client, no miForge package but
+# `backend/src/wsp_worker/` (FR-016.9; the image tests refuse each by import). No credential and no
+# secret: the pod's env is a literal list (D20). No shell is needed by the supervisor; the base
+# image's is left alone rather than deleted, since nothing the child can do with `/bin/sh` is
+# beyond what it can do with `python` (its seccomp filter is the containment, not the toolbox).
+
+FROM python:3.13-slim AS prod
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+ARG APP_VERSION=0.0.0
+LABEL org.opencontainers.image.title="miforge-wsp-worker" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.source="https://github.com/hitsainet/miForge"
+
+# libseccomp, loaded by the child through ctypes (`wsp_worker/child_seccomp.py`, miServer's
+# mechanism). Installed EXPLICITLY even when the base already carries it as a dependency of
+# something else: a transitive package is not a contract (the image test asserts
+# `ctypes.util.find_library("seccomp")` resolves).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libseccomp2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# uid and gid 10002: the worker's own, distinct from the backend's 10001, so `RLIMIT_NPROC` (counted
+# per real uid across the node) separates them (P60). `contract/test_wsp_worker_uid_unique_cross_repo.py`
+# keeps every other suite manifest off it. HOME is /tmp (a wiped root).
+RUN groupadd --gid 10002 wsp \
+    && useradd --uid 10002 --gid 10002 --no-create-home --home-dir /tmp --shell /usr/sbin/nologin wsp \
+    && install -d -o 10002 -g 10002 -m 0700 /work /out
+
+# The COMPLETE dependency lock, installed with `--no-deps` so nothing unlisted arrives; then the
+# same drift check the backend image runs refuses the build if anything installed is not in the
+# lock or is at another version. Both files arrive by a build-time bind mount, so no layer
+# carries them.
+RUN --mount=type=bind,source=backend/requirements-wsp-worker.txt,target=/run/wsp-build/requirements.txt \
+    --mount=type=bind,source=backend/scripts/check_installed_matches_lock.py,target=/run/wsp-build/check.py \
+    pip install --no-cache-dir --no-deps -r /run/wsp-build/requirements.txt \
+    && python /run/wsp-build/check.py /run/wsp-build/requirements.txt
+
+# The worker package alone, outside site-packages, on the path through one `.pth` line (the
+# supervisor and its child both run `python -I`, which ignores PYTHONPATH and the working
+# directory). Compiled at build time because the root filesystem is read-only at run time.
+COPY backend/src/wsp_worker/ /opt/wsp/wsp_worker/
+COPY LICENSE /opt/wsp/LICENSE
+RUN printf '/opt/wsp\n' > "$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')/wsp_worker.pth" \
+    && python -m compileall -q /opt/wsp/wsp_worker
+
+USER 10002:10002
+WORKDIR /work
+EXPOSE 9000
+ENTRYPOINT ["python", "-I", "-m", "wsp_worker"]
+CMD ["supervisor"]
+
+
+# ── test: prod + pytest (+ the gateway's allow-list once it exists) ─────────────────────────────
+FROM prod AS test
+
+USER root
+# pytest and its dependencies at the backend lock's versions (`constraints.txt`), through a
+# build-time bind mount so the layer holds only what pip installs.
+RUN --mount=type=bind,source=backend/requirements-wsp-worker-test.txt,target=/run/wsp-build/requirements-test.txt \
+    pip install --no-cache-dir --no-deps -r /run/wsp-build/requirements-test.txt
+# The gateway's block allow-list (FTASKS 6.5) for the real-body test. The bracket glob matches
+# nothing until `backend/src/wsp_gateway/allowlist.py` exists, and BuildKit allows an empty
+# wildcard, so this line needs no edit when 6.5 lands; the layer check
+# (`wsp_worker_image_job.py`) then REQUIRES the file in the extra layers whenever the source tree
+# holds it, so it cannot be silently dropped.
+COPY backend/src/wsp_gatewa[y]/allowlist.p[y] /opt/wsp/wsp_gateway/
+USER 10002:10002

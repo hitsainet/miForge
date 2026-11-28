@@ -1,0 +1,267 @@
+{
+  "description": "FU-7b's standing rule, one case table for both implementations: backend/src/wsp/standing.py (backend/tests/unit/wsp/test_standing.py) and frontend/src/components/panels/wsp/standing.ts (standing.test.ts). Each document holds only the fields the rule reads.",
+  "cases": [
+    {
+      "case": "improved on a primary set scored for the first time",
+      "document": {
+        "value": "improved",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 1
+          },
+          {
+            "name": "everyday",
+            "role": "everyday_text",
+            "primary": false,
+            "value": "improved",
+            "heldout_uses": 1
+          }
+        ]
+      },
+      "standing": "improved",
+      "confirmed_by": [
+        "in_dist"
+      ]
+    },
+    {
+      "case": "improved, every primary set scored before (D128: 18 uses)",
+      "document": {
+        "value": "improved",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 18
+          },
+          {
+            "name": "unseen_genre",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 18
+          },
+          {
+            "name": "everyday",
+            "role": "everyday_text",
+            "primary": false,
+            "value": "improved",
+            "heldout_uses": 18
+          }
+        ]
+      },
+      "standing": "improved_unconfirmed",
+      "confirmed_by": []
+    },
+    {
+      "case": "improved, scored twice: the second verdict on a set is not fresh",
+      "document": {
+        "value": "improved",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 2
+          }
+        ]
+      },
+      "standing": "improved_unconfirmed",
+      "confirmed_by": []
+    },
+    {
+      "case": "improved, only a non-primary set is fresh",
+      "document": {
+        "value": "improved",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 5
+          },
+          {
+            "name": "everyday_new",
+            "role": "everyday_text",
+            "primary": false,
+            "value": "improved",
+            "heldout_uses": 1
+          }
+        ]
+      },
+      "standing": "improved_unconfirmed",
+      "confirmed_by": []
+    },
+    {
+      "case": "improved, the fresh primary set does not read improved",
+      "document": {
+        "value": "improved",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 4
+          },
+          {
+            "name": "reserve",
+            "role": "eval",
+            "primary": true,
+            "value": "not_significant",
+            "heldout_uses": 1
+          }
+        ]
+      },
+      "standing": "improved_unconfirmed",
+      "confirmed_by": []
+    },
+    {
+      "case": "improved, one of two primary sets is fresh",
+      "document": {
+        "value": "improved",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 7
+          },
+          {
+            "name": "reserve",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 1
+          }
+        ]
+      },
+      "standing": "improved",
+      "confirmed_by": [
+        "reserve"
+      ]
+    },
+    {
+      "case": "improved, heldout_uses true is not the count 1",
+      "document": {
+        "value": "improved",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": true
+          }
+        ]
+      },
+      "standing": "improved_unconfirmed",
+      "confirmed_by": []
+    },
+    {
+      "case": "improved, heldout_uses written 1.0 is the count 1",
+      "document": {
+        "value": "improved",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 1.0
+          }
+        ]
+      },
+      "standing": "improved",
+      "confirmed_by": [
+        "in_dist"
+      ]
+    },
+    {
+      "case": "improved, primary true only (a truthy string is not true)",
+      "document": {
+        "value": "improved",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": "yes",
+            "value": "improved",
+            "heldout_uses": 1
+          }
+        ]
+      },
+      "standing": "improved_unconfirmed",
+      "confirmed_by": []
+    },
+    {
+      "case": "improved with no per-set entries",
+      "document": {
+        "value": "improved",
+        "per_set": []
+      },
+      "standing": "improved_unconfirmed",
+      "confirmed_by": []
+    },
+    {
+      "case": "not_significant on fresh sets stays not_significant",
+      "document": {
+        "value": "not_significant",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "improved",
+            "heldout_uses": 1
+          }
+        ]
+      },
+      "standing": "not_significant",
+      "confirmed_by": []
+    },
+    {
+      "case": "regressed stays regressed",
+      "document": {
+        "value": "regressed",
+        "per_set": [
+          {
+            "name": "in_dist",
+            "role": "eval",
+            "primary": true,
+            "value": "regressed",
+            "heldout_uses": 1
+          }
+        ]
+      },
+      "standing": "regressed",
+      "confirmed_by": []
+    },
+    {
+      "case": "no_change stays no_change",
+      "document": {
+        "value": "no_change",
+        "per_set": []
+      },
+      "standing": "no_change",
+      "confirmed_by": []
+    },
+    {
+      "case": "unmeasured stays unmeasured",
+      "document": {
+        "value": "unmeasured",
+        "per_set": []
+      },
+      "standing": "unmeasured",
+      "confirmed_by": []
+    }
+  ]
+}

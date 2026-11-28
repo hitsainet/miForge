@@ -1,0 +1,821 @@
+{
+  "$defs": {
+    "FileEntry": {
+      "additionalProperties": false,
+      "description": "One file of the bundle. The manifest itself is not in files[].",
+      "properties": {
+        "bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "A flat file name (no '/'), fetched through GET /api/v1/wsp/bundles/{id}/files/{name} (R1B-X6).",
+          "pattern": "^[A-Za-z0-9_.\\-]{1,128}$",
+          "type": "string"
+        },
+        "role": {
+          "description": "What the file is; miForge reads files by role, never by name. Unique within files[] (P30). The five supplement_* roles are present exactly when practice.supplements is (revision 2026-11-25).",
+          "enum": [
+            "heads",
+            "practice_activations",
+            "practice_offsets",
+            "practice_positions",
+            "practice_labels",
+            "practice_validation_mask",
+            "practice_truncated_mask",
+            "supplement_activations",
+            "supplement_offsets",
+            "supplement_positions",
+            "supplement_labels",
+            "supplement_truncated_mask"
+          ],
+          "type": "string"
+        },
+        "sha256": {
+          "description": "sha256 of the file's bytes; equal to the X-Content-SHA256 header of its download.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bytes",
+        "name",
+        "role",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "Function": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "Text the editor reads.",
+          "maxLength": 4000,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "linear_probe/v1",
+            "sae/v1"
+          ],
+          "type": "string"
+        },
+        "linear_probe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LinearProbeFn"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parity": {
+          "$ref": "#/$defs/Parity"
+        },
+        "sae_fn": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SaeFn"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "description",
+        "kind",
+        "linear_probe",
+        "parity",
+        "sae_fn"
+      ],
+      "type": "object"
+    },
+    "HeldoutRef": {
+      "additionalProperties": false,
+      "description": "A reference to held-out sets that stay in miWorkbench.",
+      "properties": {
+        "owner": {
+          "const": "miworkbench",
+          "type": "string"
+        },
+        "sets": {
+          "description": "Unique by name.",
+          "items": {
+            "$ref": "#/$defs/HeldoutSet"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "owner",
+        "sets"
+      ],
+      "type": "object"
+    },
+    "HeldoutSet": {
+      "additionalProperties": false,
+      "description": "Exactly the five fields miWorkbench sends to its scorer (044 5.7.1). There is no field that can hold rows, text or activations.",
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "type": "string"
+        },
+        "role": {
+          "description": "sae_corpus: phase 4 only.",
+          "enum": [
+            "eval",
+            "everyday_text",
+            "nonsense_text",
+            "calibration",
+            "sae_corpus"
+          ],
+          "type": "string"
+        },
+        "row_ids_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "rows": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "view_id": {
+          "maxLength": 128,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "role",
+        "row_ids_sha256",
+        "rows",
+        "view_id"
+      ],
+      "type": "object"
+    },
+    "Identity": {
+      "additionalProperties": false,
+      "description": "Where the bundle came from in miWorkbench.",
+      "properties": {
+        "artifact_id": {
+          "description": "The owner's probe_id or sae_id.",
+          "maxLength": 128,
+          "type": "string"
+        },
+        "artifact_kind": {
+          "enum": [
+            "probe",
+            "sae"
+          ],
+          "type": "string"
+        },
+        "detector_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "layer": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "model": {
+          "maxLength": 256,
+          "type": "string"
+        },
+        "owner": {
+          "const": "miworkbench",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "artifact_id",
+        "artifact_kind",
+        "detector_digest",
+        "layer",
+        "model",
+        "owner",
+        "run_id"
+      ],
+      "type": "object"
+    },
+    "LinearProbeFn": {
+      "additionalProperties": false,
+      "description": "Standardise with mean/std, linear with weight/bias, attention with attention_query: the tensor names are fixed.",
+      "properties": {
+        "layer": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "params": {
+          "additionalProperties": false,
+          "properties": {
+            "tau": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "miWorkbench's softmax parameter."
+            },
+            "window": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "tau",
+            "window"
+          ],
+          "type": "object"
+        },
+        "rule": {
+          "enum": [
+            "mean",
+            "max",
+            "last",
+            "softmax",
+            "attention",
+            "rolling_mean_max"
+          ],
+          "type": "string"
+        },
+        "scope": {
+          "maxLength": 64,
+          "type": "string"
+        },
+        "skip_template_prefix": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "layer",
+        "params",
+        "rule",
+        "scope",
+        "skip_template_prefix"
+      ],
+      "type": "object"
+    },
+    "OperatingPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "target_fpr": {
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "threshold": {
+          "description": "The parent's bar.",
+          "type": "number"
+        },
+        "threshold_source": {
+          "enum": [
+            "calibration",
+            "practice"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_fpr",
+        "threshold",
+        "threshold_source"
+      ],
+      "type": "object"
+    },
+    "Parity": {
+      "additionalProperties": false,
+      "description": "Rows and the owner's scores for them; miForge's evaluator must reproduce them within tolerance.",
+      "properties": {
+        "rows": {
+          "description": "Practice row indices (044 5.7.4).",
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 256,
+          "minItems": 8,
+          "type": "array"
+        },
+        "scores": {
+          "description": "float32 values, the same length as rows.",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 256,
+          "minItems": 8,
+          "type": "array"
+        },
+        "tolerance": {
+          "description": "Absolute; default 1e-5.",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "rows",
+        "scores",
+        "tolerance"
+      ],
+      "type": "object"
+    },
+    "Practice": {
+      "additionalProperties": false,
+      "description": "The practice activations the editor may see.",
+      "properties": {
+        "d_model": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "dtype": {
+          "description": "A float32 load stores float32 (044 5.7.4).",
+          "enum": [
+            "float16",
+            "float32"
+          ],
+          "type": "string"
+        },
+        "format": {
+          "const": "token_activations",
+          "type": "string"
+        },
+        "label_counts": {
+          "additionalProperties": false,
+          "properties": {
+            "negative": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "positive": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "negative",
+            "positive"
+          ],
+          "type": "object"
+        },
+        "row_ids_sha256": {
+          "description": "sha256(RFC 8785 JCS of {\"algorithm\":\"miworkbench.row-ids/1\",\"view_id\",\"positions\"}) (044 5.7.3).",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "rows": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "supplements": {
+          "description": "Optional (revision 2026-11-25, additive within v1; FU-7a C2): extra practice rows from other views, for VALIDATION ONLY. Absent means none; an empty list is refused. Their rows follow one another, in this order, in the five supplement_* files (activations as practice.dtype x practice.d_model; offsets rows+1 over the concatenated tokens; positions, labels and truncated mask one per row). They are never in practice's train or validation split, never in a support set a program may fit on, and never in the rows a bar is cut on; the observation tools report them per supplement. A bundle sealed before this revision has no supplements and stays valid.",
+          "items": {
+            "$ref": "#/$defs/PracticeSupplement"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "tokens": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "truncated_rows": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "validation_rows": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "view_id": {
+          "maxLength": 128,
+          "type": "string"
+        }
+      },
+      "required": [
+        "d_model",
+        "dtype",
+        "format",
+        "label_counts",
+        "row_ids_sha256",
+        "rows",
+        "tokens",
+        "truncated_rows",
+        "validation_rows",
+        "view_id"
+      ],
+      "type": "object"
+    },
+    "PracticeSupplement": {
+      "additionalProperties": false,
+      "description": "One validation-only supplement: rows of one view, the owner's parity scores for some of them, and the digests that name exactly which rows they are.",
+      "properties": {
+        "first_row": {
+          "description": "Its first row in the supplement_* arrays: 0 for the first supplement, then the sum of the earlier supplements' rows.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "label_counts": {
+          "additionalProperties": false,
+          "properties": {
+            "negative": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "positive": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "negative",
+            "positive"
+          ],
+          "type": "object"
+        },
+        "parity": {
+          "$ref": "#/$defs/Parity",
+          "description": "Row indices WITHIN this supplement (0 is its first_row) and the parent's float32 scores for them; miForge's evaluator must reproduce them."
+        },
+        "row_ids_sha256": {
+          "description": "sha256(RFC 8785 JCS of {\"algorithm\":\"miworkbench.row-ids/1\",\"view_id\",\"positions\"}) over this supplement's positions, as practice.row_ids_sha256 (044 5.7.3).",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "rows": {
+          "description": "At least 8, the parity's minimum.",
+          "minimum": 8,
+          "type": "integer"
+        },
+        "tokens": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "truncated_rows": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "validation_only": {
+          "const": true,
+          "description": "Always true in this revision: a supplement row is measured on, never fitted on.",
+          "type": "boolean"
+        },
+        "view_id": {
+          "description": "The owner's view; never practice.view_id and never a heldout_ref set's view_id.",
+          "maxLength": 128,
+          "type": "string"
+        }
+      },
+      "required": [
+        "first_row",
+        "label_counts",
+        "parity",
+        "row_ids_sha256",
+        "rows",
+        "tokens",
+        "truncated_rows",
+        "validation_only",
+        "view_id"
+      ],
+      "type": "object"
+    },
+    "SaeBlock": {
+      "additionalProperties": false,
+      "description": "Phase 4.",
+      "properties": {
+        "d_in": {
+          "type": "integer"
+        },
+        "d_sae": {
+          "type": "integer"
+        },
+        "feature_index_map_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "d_in",
+        "d_sae",
+        "feature_index_map_sha256"
+      ],
+      "type": "object"
+    },
+    "SaeFn": {
+      "additionalProperties": false,
+      "description": "Phase 4.",
+      "properties": {
+        "architecture": {
+          "enum": [
+            "standard",
+            "skip",
+            "transcoder",
+            "topk",
+            "jumprelu"
+          ],
+          "type": "string"
+        },
+        "k": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "normalisation": {
+          "enum": [
+            "none",
+            "constant_norm_rescale"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "architecture",
+        "k",
+        "normalisation"
+      ],
+      "type": "object"
+    },
+    "Sensitivity": {
+      "additionalProperties": false,
+      "description": "A snapshot sealed by bundle_sha256 and never re-read; the live value comes from GET /api/v1/wsp/bundles/{id}/sensitivity at push time (P41).",
+      "properties": {
+        "basis": {
+          "description": "Informational (044 4.2).",
+          "items": {
+            "$ref": "#/$defs/SensitivityBasis"
+          },
+          "type": "array"
+        },
+        "value": {
+          "enum": [
+            "sensitive",
+            "not_sensitive",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "basis",
+        "value"
+      ],
+      "type": "object"
+    },
+    "SensitivityBasis": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "enum": [
+            "midataworks",
+            "operator_mark",
+            "lineage",
+            "none"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "sensitive",
+            "not_sensitive",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "source",
+        "value"
+      ],
+      "type": "object"
+    },
+    "TensorEntry": {
+      "additionalProperties": false,
+      "description": "One tensor in the heads file.",
+      "properties": {
+        "dtype": {
+          "description": "bias is float64 (P30).",
+          "enum": [
+            "float32",
+            "float64",
+            "float16",
+            "bfloat16"
+          ],
+          "type": "string"
+        },
+        "editable": {
+          "description": "weight, bias and attention_query are editable; mean and std are not.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "linear_probe: weight, bias, mean, std, attention_query; sae (phase 4): W_enc, b_enc, W_dec, b_dec, threshold, log_threshold. Unique within tensors[].",
+          "enum": [
+            "weight",
+            "bias",
+            "mean",
+            "std",
+            "attention_query",
+            "W_enc",
+            "b_enc",
+            "W_dec",
+            "b_dec",
+            "threshold",
+            "log_threshold"
+          ],
+          "type": "string"
+        },
+        "sha256": {
+          "description": "sha256 over the tensor's little-endian, C-contiguous bytes in its stored dtype; bfloat16 as uint16 bits (P30).",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "shape": {
+          "description": "bias is [1].",
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "dtype",
+        "editable",
+        "name",
+        "sha256",
+        "shape"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://hitsai.net/schemas/miforge-wsp-bundle-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A WSP bundle manifest: one network (a linear probe or an SAE) exported by miWorkbench for weight-space programming in miForge. miForge owns this shape; miWorkbench conforms and vendors it (P54).",
+  "properties": {
+    "baselines_available": {
+      "description": "Baselines are never files (044 4.4); [] for an SAE bundle.",
+      "items": {
+        "enum": [
+          "logistic_regression",
+          "lda",
+          "diff_of_means",
+          "threshold_recut",
+          "affine_recalibration"
+        ],
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "bundle_id": {
+      "description": "The owner's id (P40).",
+      "pattern": "^wsb_[0-9a-z]{6,40}$",
+      "type": "string"
+    },
+    "bundle_kind": {
+      "description": "sae is refused until WSP_SAE_ENABLED (PF-19).",
+      "enum": [
+        "linear_probe",
+        "sae"
+      ],
+      "type": "string"
+    },
+    "bundle_sha256": {
+      "description": "sha256 of the RFC 8785 JCS (package rfc8785 0.1.4) of this object without bundle_sha256 (P40, P54).",
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "RFC 3339 UTC.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "files": {
+      "description": "Unique by name and by role (P30).",
+      "items": {
+        "$ref": "#/$defs/FileEntry"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "function": {
+      "$ref": "#/$defs/Function"
+    },
+    "heldout_ref": {
+      "$ref": "#/$defs/HeldoutRef"
+    },
+    "identity": {
+      "$ref": "#/$defs/Identity"
+    },
+    "kind": {
+      "const": "miforge.wsp-bundle/v1",
+      "type": "string"
+    },
+    "operating_point": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OperatingPoint"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "null for an SAE bundle (P40)."
+    },
+    "practice": {
+      "$ref": "#/$defs/Practice"
+    },
+    "sae": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SaeBlock"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "null unless bundle_kind is sae."
+    },
+    "sensitivity": {
+      "$ref": "#/$defs/Sensitivity"
+    },
+    "tensors": {
+      "description": "Unique by name; the tensors of the heads file.",
+      "items": {
+        "$ref": "#/$defs/TensorEntry"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "baselines_available",
+    "bundle_id",
+    "bundle_kind",
+    "bundle_sha256",
+    "created_at",
+    "files",
+    "function",
+    "heldout_ref",
+    "identity",
+    "kind",
+    "operating_point",
+    "practice",
+    "sae",
+    "sensitivity",
+    "tensors"
+  ],
+  "title": "miForge WSP bundle v1",
+  "type": "object"
+}

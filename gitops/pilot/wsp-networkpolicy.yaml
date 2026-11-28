@@ -1,0 +1,103 @@
+# WSP network policy (feature 016; FTDD §8.2, FR-016.13). Enforced by Calico (open source),
+# which honours networking.k8s.io/v1 NetworkPolicy but has no DNS-name rules: the external host
+# allow-list therefore lives in the gateway (FTDD §5.5), not here.
+#
+# The WORKER may be reached only by the backend pod (the driver pushes to it) and may reach only
+# the gateway. No DNS (P37: the worker's dnsPolicy is None), no backend egress (P49: the worker
+# holds no credential and pulls nothing; the backend pushes and pulls). Pinned exactly by
+# backend/tests/unit/wsp/test_wsp_networkpolicy.py; the phase-1 cluster check proves it live, by IP.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wsp-worker
+  namespace: miforge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: miforge-wsp-worker
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: miforge-backend
+      ports:
+        - protocol: TCP
+          port: 9000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: miforge-wsp-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# The GATEWAY meters and forwards the worker's editor calls (FTDD §5.5). It is reached only by the
+# worker, and reaches only: miServer's backend (the local editor), the internet on 443 outside the
+# private ranges (an operator-registered external endpoint; the host allow-list is the gateway's
+# own), the backend's internal application on 8001 (reserve, settle, sessions by token), kube-dns
+# to resolve the external host, and since 019 P4 (2026-11-25, TEMPORARY) the CPU-only llama.cpp
+# editor on 8080 (wsp-cpu-editor.yaml; the fifth rule, removed with it after P4).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wsp-gateway
+  namespace: miforge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: miforge-wsp-gateway
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: miforge-wsp-worker
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: miserver
+          podSelector:
+            matchLabels:
+              app: miserver-backend
+      ports:
+        - protocol: TCP
+          port: 8000
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - podSelector:
+            matchLabels:
+              app: miforge-backend
+      ports:
+        - protocol: TCP
+          port: 8001
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: miforge-wsp-cpu-editor
+      ports:
+        - protocol: TCP
+          port: 8080

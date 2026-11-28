@@ -1,0 +1,8 @@
+# pytest for the WSP worker image's `test` target only (backend/Dockerfile.wsp-worker; R3A-23).
+# Every line at constraints.txt's version; installed with --no-deps, so this is the whole set.
+# backend/tests/unit/wsp/test_wsp_image_job.py pins it to constraints.txt.
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+pygments==2.21.0
+pytest==9.1.1

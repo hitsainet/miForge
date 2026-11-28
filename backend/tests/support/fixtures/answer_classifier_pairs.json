@@ -1,0 +1,1119 @@
+{
+ "$comment": "023 FTASKS 1.7 and DT8: one before-and-after pair per row of the classifier's table (miServer FR-044.16's rows, kept identical), plus unlisted changes, which must come out breaking. `base` is the old document; each pair's `ops` edit a copy into the new one: set, delete, append (to a list), remove_value (from a list); a path is a list of keys and list indexes. `documents` maps each sha256 label to the referenced document it stands for, read by the pair's resolver; a label it lacks resolves to nothing. `expect` is one (row, breaking) the classifier must report, and `breaking` whether any change is breaking. Read by tests/unit/contract/test_answers_classifier.py and, in miServer's interpreter, by test_answers_contract_consumers.py.",
+ "base": {
+  "$defs": {
+   "ErrorEnvelope": {
+    "properties": {
+     "code": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "code"
+    ],
+    "type": "object"
+   },
+   "Fixed": {
+    "properties": {
+     "z": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "z"
+    ],
+    "type": "object"
+   },
+   "Item": {
+    "allOf": [
+     {
+      "if": {
+       "properties": {
+        "c": {
+         "const": "x"
+        }
+       }
+      },
+      "then": {
+       "properties": {
+        "n": {
+         "type": "integer"
+        }
+       }
+      }
+     }
+    ],
+    "properties": {
+     "c": {
+      "const": "x"
+     },
+     "doc": {
+      "$ref": "https://example.test/doc.json"
+     },
+     "k": {
+      "enum": [
+       "a",
+       "b"
+      ],
+      "type": "string"
+     },
+     "m": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object"
+     },
+     "n": {
+      "type": "integer"
+     },
+     "opt": {
+      "type": "string"
+     },
+     "s": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "sub": {
+      "$ref": "#/$defs/Sub"
+     },
+     "u": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "xs": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "c",
+     "doc",
+     "k",
+     "m",
+     "n",
+     "s",
+     "sub",
+     "u",
+     "xs"
+    ],
+    "type": "object"
+   },
+   "Other": {
+    "properties": {
+     "z": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "z"
+    ],
+    "type": "object"
+   },
+   "Sub": {
+    "properties": {
+     "z": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "z"
+    ],
+    "type": "object"
+   }
+  },
+  "$id": "https://hitsai.net/schemas/midataworks-answers-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "coverage": {
+   "excluded": 1,
+   "external": 0,
+   "typed": 2,
+   "unions": 0,
+   "untyped": 0
+  },
+  "description": "d",
+  "errors": {
+   "app": {
+    "$ref": "#/$defs/ErrorEnvelope"
+   }
+  },
+  "excluded": {
+   "GET /m": {
+    "media_type": "application/octet-stream",
+    "reason": "file download",
+    "x-schema": {
+     "$ref": "#/$defs/Fixed"
+    }
+   }
+  },
+  "external": {
+   "https://example.test/doc.json": {
+    "file": "docs/schemas/doc.json",
+    "sha256": "sha-old"
+   }
+  },
+  "kind": "midataworks.answer-contract/v1",
+  "responses": {
+   "GET /a": {
+    "200": {
+     "$ref": "#/$defs/Item"
+    }
+   },
+   "GET /l": {
+    "200": {
+     "items": {
+      "$ref": "#/$defs/Item"
+     },
+     "type": "array"
+    }
+   }
+  },
+  "title": "t"
+ },
+ "documents": {
+  "sha-add": {
+   "$id": "https://example.test/doc.json",
+   "properties": {
+    "a": {
+     "type": "string"
+    },
+    "b": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "a"
+   ],
+   "type": "object"
+  },
+  "sha-old": {
+   "$id": "https://example.test/doc.json",
+   "properties": {
+    "a": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "a"
+   ],
+   "type": "object"
+  },
+  "sha-rm": {
+   "$id": "https://example.test/doc.json",
+   "properties": {},
+   "required": [],
+   "type": "object"
+  }
+ },
+ "pairs": [
+  {
+   "breaking": false,
+   "expect": [
+    "new route",
+    false
+   ],
+   "id": "00",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "responses",
+      "GET /b"
+     ],
+     "value": {
+      "$ref": "#/$defs/Item"
+     }
+    }
+   ]
+  },
+  {
+   "breaking": false,
+   "expect": [
+    "new route",
+    false
+   ],
+   "id": "01",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "excluded",
+      "GET /t"
+     ],
+     "value": {
+      "media_type": "text/csv",
+      "reason": "r"
+     }
+    }
+   ]
+  },
+  {
+   "breaking": false,
+   "expect": [
+    "new status code",
+    false
+   ],
+   "id": "02",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "responses",
+      "GET /a",
+      "202"
+     ],
+     "value": {
+      "$ref": "#/$defs/Item"
+     }
+    }
+   ]
+  },
+  {
+   "breaking": false,
+   "expect": [
+    "new optional field",
+    false
+   ],
+   "id": "03",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "o2"
+     ],
+     "value": {
+      "type": "string"
+     }
+    }
+   ]
+  },
+  {
+   "breaking": false,
+   "expect": [
+    "new always-sent field",
+    false
+   ],
+   "id": "04",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "a2"
+     ],
+     "value": {
+      "type": "integer"
+     }
+    },
+    {
+     "op": "append",
+     "path": [
+      "$defs",
+      "Item",
+      "required"
+     ],
+     "value": "a2"
+    }
+   ]
+  },
+  {
+   "breaking": false,
+   "expect": [
+    "descriptive",
+    false
+   ],
+   "id": "05",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "description"
+     ],
+     "value": "now described"
+    }
+   ]
+  },
+  {
+   "breaking": false,
+   "expect": [
+    "descriptive",
+    false
+   ],
+   "id": "06",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Fresh"
+     ],
+     "value": {
+      "type": "object"
+     }
+    }
+   ]
+  },
+  {
+   "breaking": false,
+   "expect": [
+    "descriptive",
+    false
+   ],
+   "id": "07",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "title"
+     ],
+     "value": "another title"
+    }
+   ]
+  },
+  {
+   "breaking": false,
+   "expect": [
+    "descriptive",
+    false
+   ],
+   "id": "08",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "n",
+      "$comment"
+     ],
+     "value": "a comment"
+    }
+   ]
+  },
+  {
+   "breaking": false,
+   "expect": [
+    "vendored schema revised (additive)",
+    false
+   ],
+   "id": "09",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "external",
+      "https://example.test/doc.json",
+      "sha256"
+     ],
+     "value": "sha-add"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "10",
+   "ops": [
+    {
+     "op": "delete",
+     "path": [
+      "responses",
+      "GET /a"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "11",
+   "ops": [
+    {
+     "op": "delete",
+     "path": [
+      "responses",
+      "GET /a",
+      "200"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "12",
+   "ops": [
+    {
+     "op": "delete",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "opt"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "13",
+   "ops": [
+    {
+     "op": "delete",
+     "path": [
+      "external",
+      "https://example.test/doc.json"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "14",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "external",
+      "https://example.test/doc.json",
+      "sha256"
+     ],
+     "value": "sha-rm"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "retyped",
+    true
+   ],
+   "id": "15",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "n",
+      "type"
+     ],
+     "value": "string"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "retyped",
+    true
+   ],
+   "id": "16",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "sub"
+     ],
+     "value": {
+      "$ref": "#/$defs/Other"
+     }
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "retyped",
+    true
+   ],
+   "id": "17",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "s",
+      "format"
+     ],
+     "value": "date"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "retyped",
+    true
+   ],
+   "id": "18",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "responses",
+      "GET /l",
+      "200",
+      "items",
+      "$ref"
+     ],
+     "value": "#/$defs/Other"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "retyped",
+    true
+   ],
+   "id": "19",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "xs",
+      "items",
+      "type"
+     ],
+     "value": "string"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "made required",
+    true
+   ],
+   "id": "20",
+   "ops": [
+    {
+     "op": "append",
+     "path": [
+      "$defs",
+      "Item",
+      "required"
+     ],
+     "value": "opt"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "enum widened",
+    true
+   ],
+   "id": "21",
+   "ops": [
+    {
+     "op": "append",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "k",
+      "enum"
+     ],
+     "value": "c"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "enum widened",
+    true
+   ],
+   "id": "22",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "c",
+      "const"
+     ],
+     "value": "y"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "sometimes absent",
+    true
+   ],
+   "id": "23",
+   "ops": [
+    {
+     "op": "remove_value",
+     "path": [
+      "$defs",
+      "Item",
+      "required"
+     ],
+     "value": "n"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "moved between responses and excluded",
+    true
+   ],
+   "id": "24",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "excluded",
+      "GET /a"
+     ],
+     "value": {
+      "media_type": "text/plain",
+      "reason": "r"
+     }
+    },
+    {
+     "op": "delete",
+     "path": [
+      "responses",
+      "GET /a"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "25",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "n",
+      "minimum"
+     ],
+     "value": 0
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "26",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "excluded",
+      "GET /m",
+      "media_type"
+     ],
+     "value": "text/csv"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "27",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "responses",
+      "GET /a",
+      "x-approval-action"
+     ],
+     "value": "hub_push"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "28",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "kind"
+     ],
+     "value": "midataworks.answer-contract/v2"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "29",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$schema"
+     ],
+     "value": "http://json-schema.org/draft-07/schema#"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "30",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "errors",
+      "other"
+     ],
+     "value": {
+      "$ref": "#/$defs/ErrorEnvelope"
+     }
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "31",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "k",
+      "enum"
+     ],
+     "value": [
+      "a"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "32",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "n"
+     ],
+     "value": true
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "33",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "external",
+      "https://example.test/doc.json",
+      "file"
+     ],
+     "value": "docs/schemas/moved.json"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "unlisted change",
+    true
+   ],
+   "id": "34",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "external",
+      "https://example.test/doc.json",
+      "sha256"
+     ],
+     "value": "sha-unknown"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "35",
+   "ops": [
+    {
+     "op": "delete",
+     "path": [
+      "errors",
+      "app"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "36",
+   "ops": [
+    {
+     "op": "delete",
+     "path": [
+      "$defs",
+      "Other"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "37",
+   "ops": [
+    {
+     "op": "delete",
+     "path": [
+      "$defs",
+      "ErrorEnvelope",
+      "properties",
+      "code"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "38",
+   "ops": [
+    {
+     "op": "delete",
+     "path": [
+      "$defs",
+      "Fixed",
+      "properties",
+      "z"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "39",
+   "ops": [
+    {
+     "op": "delete",
+     "path": [
+      "$defs",
+      "Sub",
+      "properties",
+      "z"
+     ]
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "retyped",
+    true
+   ],
+   "id": "40",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "u",
+      "anyOf",
+      0,
+      "type"
+     ],
+     "value": "string"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "retyped",
+    true
+   ],
+   "id": "41",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "m",
+      "additionalProperties",
+      "type"
+     ],
+     "value": "string"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "retyped",
+    true
+   ],
+   "id": "42",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "allOf",
+      0,
+      "then",
+      "properties",
+      "n",
+      "type"
+     ],
+     "value": "string"
+    }
+   ]
+  },
+  {
+   "breaking": true,
+   "expect": [
+    "removed",
+    true
+   ],
+   "id": "43",
+   "note": "a rename is a removal plus an addition",
+   "ops": [
+    {
+     "op": "set",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "optional"
+     ],
+     "value": {
+      "type": "string"
+     }
+    },
+    {
+     "op": "delete",
+     "path": [
+      "$defs",
+      "Item",
+      "properties",
+      "opt"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,8 @@
+{
+  "dtype": "float32",
+  "edited_safetensors_sha256": "d1ba122798e6e0bcc9d1b92a604d71a3ea8fec90ae5c9fd29636399420ee83f8",
+  "edited_sha256": {
+    "W_dec": "a81ba3ff94b0eb57be602705eaa336b063ddba8241fbc0e0a9fc7e32e8c0b2b0"
+  },
+  "form": "lowrank"
+}

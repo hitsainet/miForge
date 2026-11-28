@@ -1,0 +1,538 @@
+{
+ "DELETE /api/v1/pack-drafts/{draft_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "None"
+ },
+ "DELETE /api/v1/packs/{pack_id}/versions/{version}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "None"
+ },
+ "DELETE /api/v1/settings/{key}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "DELETE /api/v1/wsp/endpoints/{endpoint_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/health": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/adapters": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/adapters/{name}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/approvals": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "<class 'schemas.approvals.ApprovalList'>"
+ },
+ "GET /api/v1/approvals/actions": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/approvals/{approval_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "<class 'schemas.approvals.ApprovalView'>"
+ },
+ "GET /api/v1/attachment": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/chains": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/chains/{chain_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/checkpoints": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/gpus": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/host/resources": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/hub/revision": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/merges": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/midataworks/available-parts": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/midataworks/status": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/models/local": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/models/sources": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/pack-drafts": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/pack-drafts/{draft_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/pack-drafts/{draft_id}/validity": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/pack-part-refs/{part_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/packs": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "<class 'api.v1.endpoints.packs.PackListing'>"
+ },
+ "GET /api/v1/packs/{pack_id}/versions/{version}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/packs/{pack_id}/versions/{version}/export": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "None"
+ },
+ "GET /api/v1/packs/{pack_id}/versions/{version}/lineage": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/packs/{pack_id}/versions/{version}/validity": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/parts": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/parts/{part_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/providers": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/purges": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/refresh-modes": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/run-types": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/batches": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/batches/{batch_sha256}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/boundaries": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/checkpoints": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/checkpoints/{step}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/checkpoints/{step}/lineage": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/definition": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/review": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/scores": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/scores/{step}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/steps": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/runs/{run_id}/stop-conditions": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/selectors": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "list[services.selectors.types.CapabilityView]"
+ },
+ "GET /api/v1/settings": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/settings/history": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/signal-sources": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/stop-conditions": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/tokenizers/local": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/tree": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/bundles": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/bundles/{bundle_sha256}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/candidates": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/candidates/{candidate_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/candidates/{candidate_id}/lineage": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/candidates/{candidate_id}/patch/{name}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "None"
+ },
+ "GET /api/v1/wsp/candidates/{candidate_id}/run-document": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "Any"
+ },
+ "GET /api/v1/wsp/candidates/{candidate_id}/tensors": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "None"
+ },
+ "GET /api/v1/wsp/candidates/{candidate_id}/verdict": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/candidates/{candidate_id}/verdict/scores": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "None"
+ },
+ "GET /api/v1/wsp/endpoints": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/heldout-uses": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/pool": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/programs/{program_sha256}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/providers": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/runs": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/runs/{run_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/runs/{run_id}/calls": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/runs/{run_id}/ledger": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "<class 'schemas.wsp_reads.WspRunLedger'>"
+ },
+ "GET /api/v1/wsp/runs/{run_id}/progress": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "GET /api/v1/wsp/runs/{run_id}/record": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "<class 'schemas.wsp_reads.WspRunRecord'>"
+ },
+ "GET /api/v1/wsp/runs/{run_id}/transcript": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "PATCH /api/v1/wsp/endpoints/{endpoint_id}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/adapters/{name}/merge": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/approvals/approve-batch": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/approvals/{approval_id}/approve": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "<class 'schemas.approvals.ApprovalView'>"
+ },
+ "POST /api/v1/approvals/{approval_id}/reject": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "<class 'schemas.approvals.ApprovalView'>"
+ },
+ "POST /api/v1/budget/estimate": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/chains": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/chains/{chain_id}/stop": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/pack-drafts": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/pack-drafts/{draft_id}/commit": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/pack-drafts/{draft_id}/dry-run": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/pack-drafts/{draft_id}/samples/{slot}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/pack-drafts/{draft_id}/samples/{slot}/score": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/packs": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/packs/import": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/packs/{pack_id}/versions/{version}/clone": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/parts/import": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/parts/purge": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/parts/purge/plan": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/parts/validate": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/parts/{part_id}/archive": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/parts/{part_id}/purge": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/parts/{part_id}/unarchive": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/providers/{name}/check": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/define": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/purge": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/purge/plan": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/validate": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/{run_id}/archive": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/{run_id}/cancel": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/{run_id}/checkpoints": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/{run_id}/checkpoints/{step}/branch": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/{run_id}/checkpoints/{step}/verify": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/{run_id}/continue": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/{run_id}/evaluate": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/{run_id}/purge": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/runs/{run_id}/unarchive": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/selectors/evaluate": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "<class 'api.v1.endpoints.selectors.EvaluateResponse'>"
+ },
+ "POST /api/v1/signal-sources/preflight": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/bundles/import": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "None"
+ },
+ "POST /api/v1/wsp/candidates/{candidate_id}/evaluate": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/endpoints": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/endpoints/{endpoint_id}/protocol-test": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/patches/stack": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/patches/verify": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/programs/{program_sha256}/rerun": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/runs": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/runs/validate": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "None"
+ },
+ "POST /api/v1/wsp/runs/{run_id}/cancel": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/runs/{run_id}/replay": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "POST /api/v1/wsp/weight-ops/inspect": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "None"
+ },
+ "PUT /api/v1/pack-drafts/{draft_id}/steps/{number}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ },
+ "PUT /api/v1/settings/{key}": {
+  "response_class": "DefaultPlaceholder",
+  "response_model": "dict[str, Any]"
+ }
+}

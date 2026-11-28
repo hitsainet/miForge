@@ -1,0 +1,356 @@
+# A small CPU-only llama.cpp server: a second, generic WSP editor endpoint for feature 019's P4 live
+# proof (two WSP runs on two local endpoints that truly overlap: one on miServer, one here).
+# Prepared 2026-11-25 on the operator's go; applying it and pushing it are asked separately.
+# TEMPORARY: the runbook (0xcc/reviews/019_P4_cpu_editor.md) removes it all after P4.
+#
+# What is here, pinned by backend/tests/unit/wsp/test_wsp_cpu_editor_manifest.py:
+#   - Where it runs: node mcs-lnxhost01, off the GPU node (operator, 2026-11-25), with a toleration
+#     for that node's `no-gpu=true:NoSchedule` taint. Every pod here carries both.
+#   - The model volume: a hostPath on mcs-lnxhost01, `type: Directory`, at
+#     /data/miforge/wsp-cpu-editor, which the OPERATOR creates once, owned 10001:10001 (the
+#     runbook's step 0). Not a PersistentVolumeClaim: the cluster's hostpath provisioner
+#     (cdkbot/hostpath-provisioner 1.4.2) makes a volume's directory with a helper pod that has a
+#     nodeSelector and NO toleration, so on this tainted node it never schedules and the claim
+#     would stay Pending (read 2026-11-25; no hostpath volume has ever been made on this node).
+#     A missing directory keeps the pods Pending, loudly (FR-015.11). Removal deletes it by hand.
+#   - A one-shot Job that fetches the GGUF once from Hugging Face (public, no token), at a pinned
+#     revision, verifies its sha256 and only then renames it into place. The Job is the ONLY pod
+#     here with a way out (443 to public addresses, and DNS); the server has none.
+#   - The server (Deployment and ClusterIP Service): the official llama.cpp image at v1.0.0, pinned
+#     by digest and NOT in the kustomization's `images:` list, so Image Updater never retags it.
+#     CPU only (no GPU request, NVIDIA_VISIBLE_DEVICES=void), non-root, read-only root. Its init
+#     container waits for the fetched file and verifies the same sha256 before the server starts.
+#   - Two NetworkPolicies: the server is reached only by the gateway (editor calls) and the backend
+#     (the window read, GET /v1/models then /props, FR-019.1), on 8080, and reaches nothing; the
+#     fetch Job is reached by nothing and reaches only 443 outside the private ranges, and DNS.
+#     The WSP worker cannot reach the server: its own policy admits only the gateway.
+#
+# The host is admitted in miforge-config's WSP_LOCAL_HOST_ALLOWLIST (read by the backend and the
+# gateway), and the gateway's egress policy names this server's pods (wsp-networkpolicy.yaml).
+#
+# Register it as: kind openai_compatible, serving generic, no key,
+#   base_url http://miforge-wsp-cpu-editor.miforge.svc:8080/v1, model lfm2.5-1.2b-instruct.
+# Expected window read: GET /props -> default_generation_settings.n_ctx = 32768 (one slot).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: miforge-wsp-cpu-editor-fetch
+  namespace: miforge
+  labels:
+    app.kubernetes.io/name: miforge-wsp-cpu-editor-fetch
+    app.kubernetes.io/component: wsp-editor
+spec:
+  # No ttlSecondsAfterFinished: a finished Job deleted by Kubernetes would be re-created by
+  # ArgoCD's self-heal and run again. A re-run finds the verified file and exits 0.
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: miforge-wsp-cpu-editor-fetch
+        app.kubernetes.io/component: wsp-editor
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        kubernetes.io/hostname: mcs-lnxhost01
+      tolerations:
+        - key: no-gpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: fetch
+          # The server's own image (it carries curl and sha256sum), so there is one image to pin.
+          image: ghcr.io/ggml-org/llama.cpp:server-v1.0.0-b12359-b1b770d@sha256:e3032ea0712da96dec820c770626385de4322dd06619fb5829256a504bbc9375
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              f="/model/$MODEL_FILE"
+              if [ -f "$f" ] && echo "$MODEL_SHA256  $f" | sha256sum -c --status; then
+                echo "present and verified: $f"; exit 0
+              fi
+              rm -f "$f.partial"
+              curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+                --retry 5 --retry-all-errors --connect-timeout 20 --max-time 1800 \
+                -o "$f.partial" "$MODEL_URL"
+              echo "$MODEL_SHA256  $f.partial" | sha256sum -c -
+              mv "$f.partial" "$f"
+              echo "fetched and verified: $f"
+          env:
+            - name: MODEL_FILE
+              value: LFM2.5-1.2B-Instruct-Q4_K_M.gguf
+            # LiquidAI/LFM2.5-1.2B-Instruct-GGUF at commit 8ed288026e23 (2026-09-22), never `main`.
+            - name: MODEL_URL
+              value: https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/resolve/8ed288026e23958ad9dfa92d53ed773a8eee7125/LFM2.5-1.2B-Instruct-Q4_K_M.gguf
+            # The file's LFS sha256 at that commit (730,895,168 bytes); the server's init checks it too.
+            - name: MODEL_SHA256
+              value: b1b3de114215d9507409a662a501a631095a479a419584e8a2ded6304b19b4f5
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: void
+          volumeMounts:
+            - name: model
+              mountPath: /model
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+      volumes:
+        - name: model
+          hostPath:
+            path: /data/miforge/wsp-cpu-editor
+            type: Directory
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miforge-wsp-cpu-editor
+  namespace: miforge
+  labels:
+    app.kubernetes.io/name: miforge-wsp-cpu-editor
+    app.kubernetes.io/component: wsp-editor
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: miforge-wsp-cpu-editor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: miforge-wsp-cpu-editor
+        app.kubernetes.io/component: wsp-editor
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        kubernetes.io/hostname: mcs-lnxhost01
+      tolerations:
+        - key: no-gpu
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Waits for the fetch Job's rename (the file exists only once verified), then checks the
+        # sha256 again: the server never starts on a partial or altered file. No network needed.
+        - name: wait-for-model
+          image: ghcr.io/ggml-org/llama.cpp:server-v1.0.0-b12359-b1b770d@sha256:e3032ea0712da96dec820c770626385de4322dd06619fb5829256a504bbc9375
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              f="/model/$MODEL_FILE"
+              until [ -f "$f" ]; do echo "waiting for $f (Job miforge-wsp-cpu-editor-fetch)"; sleep 10; done
+              echo "$MODEL_SHA256  $f" | sha256sum -c -
+          env:
+            - name: MODEL_FILE
+              value: LFM2.5-1.2B-Instruct-Q4_K_M.gguf
+            - name: MODEL_SHA256
+              value: b1b3de114215d9507409a662a501a631095a479a419584e8a2ded6304b19b4f5
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: void
+          volumeMounts:
+            - name: model
+              mountPath: /model
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 500m
+              memory: 64Mi
+      containers:
+        - name: llama-server
+          image: ghcr.io/ggml-org/llama.cpp:server-v1.0.0-b12359-b1b770d@sha256:e3032ea0712da96dec820c770626385de4322dd06619fb5829256a504bbc9375
+          imagePullPolicy: IfNotPresent
+          # The image's entrypoint is /app/llama-server. Flags, each deliberate:
+          #   --ctx-size 32768 --parallel 1: one slot, so /props' per-slot n_ctx is the whole 32,768
+          #     (the window the backend reads, FR-019.1); 32,768 is above paging's 16,384 floor.
+          #   --jinja: the GGUF's own chat template, which carries tool calls (OpenAI tool_calls and
+          #     response_format json_schema both checked on this image, 2026-11-25).
+          #   --cache-ram 0: no host-memory prompt cache (its default, 8 GiB, is above the limit).
+          #   --offline --no-webui --no-slots --no-agent: no network fetch, no browser UI, no /slots
+          #     (it would show prompts), no built-in tools or MCP proxy.
+          #   --threads 6: equal to the CPU limit.
+          args:
+            - --model
+            - /model/LFM2.5-1.2B-Instruct-Q4_K_M.gguf
+            - --alias
+            - lfm2.5-1.2b-instruct
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8080"
+            - --ctx-size
+            - "32768"
+            - --parallel
+            - "1"
+            - --threads
+            - "6"
+            - --jinja
+            - --cache-ram
+            - "0"
+            - --offline
+            - --no-webui
+            - --no-slots
+            - --no-agent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: void
+          volumeMounts:
+            - name: model
+              mountPath: /model
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 4
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          # Measured 2026-11-25 on this image with this model and these flags: about 1.0 GiB
+          # resident after a tool-calling session. Six of mcs-lnxhost01's 16 CPUs at most.
+          resources:
+            requests:
+              cpu: "2"
+              memory: 1536Mi
+            limits:
+              cpu: "6"
+              memory: 3Gi
+      volumes:
+        - name: model
+          hostPath:
+            path: /data/miforge/wsp-cpu-editor
+            type: Directory
+---
+# The gateway (editor calls) and the backend (the window read) reach it here. No Ingress names it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: miforge-wsp-cpu-editor
+  namespace: miforge
+  labels:
+    app.kubernetes.io/name: miforge-wsp-cpu-editor
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: miforge-wsp-cpu-editor
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+# The server: reached by the gateway and the backend only, on 8080; reaches nothing (no egress
+# rule, so no DNS and no internet: the model is already on its volume).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wsp-cpu-editor
+  namespace: miforge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: miforge-wsp-cpu-editor
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: miforge-wsp-gateway
+        - podSelector:
+            matchLabels:
+              app: miforge-backend
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress: []
+---
+# The fetch Job: reached by nothing; reaches Hugging Face (443 outside the private ranges) and
+# kube-dns only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wsp-cpu-editor-fetch
+  namespace: miforge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: miforge-wsp-cpu-editor-fetch
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - protocol: TCP
+          port: 443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

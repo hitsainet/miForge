@@ -1,0 +1,45 @@
+# A fresh WSP worker pod per session (operator 2026-11-26: option B of the 019 P4 restart debt).
+#
+# The WSP driver (`worker-wsp` in backend.yaml) deletes `miforge-wsp-worker-<i>` after it acks the
+# session on it (backend/src/wsp/pod_recycler.py), so the StatefulSet makes a new pod at once
+# instead of the kubelet restarting the exited container through CrashLoopBackOff. The worker's
+# own containment is unchanged (wsp-worker.yaml: still no token, no service account, no RBAC).
+#
+# THE WHOLE GRANT IS THIS FILE, and test_wsp_driver_rbac.py pins every line of it:
+#   - one ServiceAccount, used by the backend pod only, with no automounted token; the token is a
+#     projected volume mounted in the `worker-wsp` container alone;
+#   - one namespaced Role: `get` and `delete` on `pods`, limited by `resourceNames` to the worker
+#     pods, miforge-wsp-worker-0 .. miforge-wsp-worker-<WSP_WORKER_POOL_MAX - 1> (config.yaml; the
+#     StatefulSet's replicas). Raising the maximum adds the new names here in the same commit;
+#   - one RoleBinding of that Role to that ServiceAccount. No ClusterRole, no ClusterRoleBinding.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: miforge-wsp-driver
+  namespace: miforge
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: miforge-wsp-worker-recycler
+  namespace: miforge
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    resourceNames: ["miforge-wsp-worker-0", "miforge-wsp-worker-1"]
+    verbs: ["get", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: miforge-wsp-worker-recycler
+  namespace: miforge
+subjects:
+  - kind: ServiceAccount
+    name: miforge-wsp-driver
+    namespace: miforge
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: miforge-wsp-worker-recycler

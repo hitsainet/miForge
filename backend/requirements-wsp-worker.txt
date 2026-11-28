@@ -1,0 +1,26 @@
+# The WSP worker image's COMPLETE dependency lock (feature 016, FR-016.9; FTID §2.1; R3A-6).
+# `backend/Dockerfile.wsp-worker` installs exactly this file (`pip install --no-deps -r`), and
+# nothing of the backend's: no torch, no database driver, no miForge package beside
+# `backend/src/wsp_worker/`. Every distribution is pinned exactly, transitive ones included, at the
+# latest release (operator rule 2026-10-21), like `constraints.txt`. numpy, safetensors and httpx2
+# carry the backend lock's versions, so the engine's tests in the backend venv run the image's bits.
+#
+# The provider is `miwsp_engine` alone (feature 018). Its HTTP client is `httpx2`, named directly
+# below (FR-018.18); the vendor SDKs and the retired provider of 016-P1 to 018-P3 are not in this
+# image, and `tests/docs/test_bakeoff_recorded.py` refuses a dependency line naming one.
+#
+# Regenerate (Python 3.13, the image's platform), from an input file holding the three lines
+#   numpy==2.5.4 / safetensors==0.8.0 / httpx2==2.16.2
+# with
+#   uv pip compile <input> --python-version 3.13 --python-platform x86_64-manylinux_2_28 \
+#     --only-binary :all: --no-annotate --no-header -o <out>
+# then restore this header.
+anyio==4.16.0
+h11==0.16.0
+httpcore2==2.16.2
+httpx2==2.16.2
+idna==3.20
+numpy==2.5.4
+safetensors==0.8.0
+truststore==0.10.5
+typing-extensions==4.16.0

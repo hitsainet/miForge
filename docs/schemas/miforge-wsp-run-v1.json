@@ -1,0 +1,1518 @@
+{
+  "$defs": {
+    "Approval": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "wsp_session",
+            "wsp_session_external"
+          ],
+          "type": "string"
+        },
+        "approval_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "approval_id"
+      ],
+      "type": "object"
+    },
+    "Bar": {
+      "additionalProperties": false,
+      "properties": {
+        "realised_fpr": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        },
+        "target_fpr": {
+          "type": "number"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "realised_fpr",
+        "source",
+        "target_fpr",
+        "threshold"
+      ],
+      "type": "object"
+    },
+    "Budgets": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forward_passes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_steps": {
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "time_s": {
+          "maximum": 86400,
+          "minimum": 60,
+          "type": "integer"
+        },
+        "tokens": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cost_usd",
+        "forward_passes",
+        "max_steps",
+        "time_s",
+        "tokens"
+      ],
+      "type": "object"
+    },
+    "BundleRef": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_id": {
+          "maxLength": 128,
+          "type": "string"
+        },
+        "bundle_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_id",
+        "bundle_sha256",
+        "owner"
+      ],
+      "type": "object"
+    },
+    "ChangeLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tensors": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frozen_tensors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "max_changed_entries": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "allowed_tensors",
+        "frozen_tensors",
+        "max_changed_entries"
+      ],
+      "type": "object"
+    },
+    "Completeness": {
+      "additionalProperties": false,
+      "properties": {
+        "missing": {
+          "description": "heldout_set_missing:<n>, heldout_set_too_small:<n>, baseline_missing:<k>.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "missing",
+        "ok"
+      ],
+      "type": "object"
+    },
+    "ControlFigures": {
+      "additionalProperties": false,
+      "description": "FR-016.27, FTDD 6.4 (R1B-A8): the candidate's changed-entry count and delta L2 norm, and the random control's after the cast to the base dtype, which rounding can move (review 016-P2, R16P2-4).",
+      "properties": {
+        "candidate": {
+          "$ref": "#/$defs/DeltaFigures"
+        },
+        "control_post_cast": {
+          "$ref": "#/$defs/DeltaFigures"
+        }
+      },
+      "required": [
+        "candidate",
+        "control_post_cast"
+      ],
+      "type": "object"
+    },
+    "Delta": {
+      "additionalProperties": false,
+      "properties": {
+        "against": {
+          "description": "A head label.",
+          "type": "string"
+        },
+        "estimate": {
+          "type": "number"
+        },
+        "lower": {
+          "type": "number"
+        },
+        "metric": {
+          "enum": [
+            "auroc",
+            "recall_at_bar",
+            "false_alarm_rate",
+            "fvu",
+            "l0",
+            "dead_fraction"
+          ],
+          "type": "string"
+        },
+        "upper": {
+          "type": "number"
+        },
+        "worse_if": {
+          "enum": [
+            "lower",
+            "higher"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "against",
+        "estimate",
+        "lower",
+        "metric",
+        "upper",
+        "worse_if"
+      ],
+      "type": "object"
+    },
+    "DeltaFigures": {
+      "additionalProperties": false,
+      "properties": {
+        "changed_entries": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "l2_delta": {
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "changed_entries",
+        "l2_delta"
+      ],
+      "type": "object"
+    },
+    "EndpointRef": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "locality": {
+          "enum": [
+            "local",
+            "external"
+          ],
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 256,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "locality",
+        "model"
+      ],
+      "type": "object"
+    },
+    "Failure": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 64,
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 2000,
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "FigureCheck": {
+      "additionalProperties": false,
+      "description": "One figure the editor stated in submit's figures, beside the measurement of the submitted weights (FU-2).",
+      "properties": {
+        "claimed": {
+          "description": "As the editor stated it.",
+          "minimum": 0,
+          "type": "number"
+        },
+        "figure": {
+          "enum": [
+            "auroc",
+            "recall",
+            "false_alarms"
+          ],
+          "type": "string"
+        },
+        "matches": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the measured figure rounds to the claimed one at the claim's own precision (half a unit in its last decimal place; false_alarms exactly); null when not compared."
+        },
+        "measured": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The submitted weights' figure on that split (submitted_measured's now); null when not compared."
+        }
+      },
+      "required": [
+        "claimed",
+        "figure",
+        "matches",
+        "measured"
+      ],
+      "type": "object"
+    },
+    "FrozenRequest": {
+      "additionalProperties": false,
+      "description": "The validated, defaulted start request. It holds no held-out rows: only names of held-out sets.",
+      "properties": {
+        "budgets": {
+          "$ref": "#/$defs/Budgets"
+        },
+        "bundle": {
+          "$ref": "#/$defs/BundleRef"
+        },
+        "chain": {
+          "description": "P21.",
+          "type": "boolean"
+        },
+        "change_limits": {
+          "$ref": "#/$defs/ChangeLimits"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EndpointRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Resolved from the start body's endpoint_id; null for a rerun or a replay."
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "repair becomes improve when set."
+        },
+        "keep_weights": {
+          "description": "create only; false otherwise.",
+          "type": "boolean"
+        },
+        "kind": {
+          "description": "The operation (miWorkbench's start-body name, P29).",
+          "enum": [
+            "inspect",
+            "create",
+            "repair"
+          ],
+          "type": "string"
+        },
+        "mode": {
+          "description": "The style.",
+          "enum": [
+            "session",
+            "program",
+            "program_rerun",
+            "replay"
+          ],
+          "type": "string"
+        },
+        "observation_tools": {
+          "items": {
+            "$ref": "#/$defs/ObservationTool"
+          },
+          "type": "array"
+        },
+        "of_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "replay."
+        },
+        "output_cap": {
+          "description": "Present only when off (2026-11-21): the request named no per-turn output cap, so the gateway's window-aware default applied (both providers). Absent means on, as in every request frozen before it.",
+          "enum": [
+            "off"
+          ],
+          "type": "string"
+        },
+        "paging": {
+          "description": "miwsp_engine only, and present only when off (2026-11-21): the engine did not page tool results out of the editor's history and kept no experiment ledger. Absent means on for miwsp_engine (the default), and nothing for weightspace, which does not page.",
+          "enum": [
+            "off"
+          ],
+          "type": "string"
+        },
+        "parent": {
+          "$ref": "#/$defs/RequestParent"
+        },
+        "primary_sets": {
+          "description": "Names in the bundle's heldout_ref.sets.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "program_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "program_rerun."
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "python": {
+          "description": "miwsp_engine only, and present only when off (FU-8, F18-D15, 2026-11-25): the session offered the editor no python tool and ran no kernel. Absent means on (every request frozen before it, and every request at the default), so the python tool follows the operation (inspect's is read-only).",
+          "enum": [
+            "off"
+          ],
+          "type": "string"
+        },
+        "sensitivity_declared": {
+          "description": "The caller's; must equal the bundle's (PF-36).",
+          "enum": [
+            "sensitive",
+            "not_sensitive",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "support_set": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SupportSet"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task": {
+          "maxLength": 20000,
+          "type": "string"
+        },
+        "thinking": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "on",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The thinking in effect. miwsp_engine: off, on, or null (the server's default; nothing sent), resolved at freeze from the start body over the endpoint's setting. weightspace: null, off or an effort level, as weightspace reads it."
+        },
+        "thinking_tokens": {
+          "description": "miwsp_engine with thinking on only, and then present: the per-turn reasoning allowance asked for (the engine bounds it by the context window). Absent otherwise, and in every request frozen before 2026-11-21: the one optional field, so those requests and every request without thinking on stay valid.",
+          "maximum": 10000000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "budgets",
+        "bundle",
+        "chain",
+        "change_limits",
+        "endpoint",
+        "goal",
+        "keep_weights",
+        "kind",
+        "mode",
+        "observation_tools",
+        "of_run_id",
+        "parent",
+        "primary_sets",
+        "program_sha256",
+        "provider",
+        "sensitivity_declared",
+        "support_set",
+        "task",
+        "thinking"
+      ],
+      "type": "object"
+    },
+    "Head": {
+      "additionalProperties": false,
+      "properties": {
+        "auroc": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bar": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Bar"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dead_fraction": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "false_alarm_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "false_alarms_at_bar / negatives, derived by miForge."
+        },
+        "false_alarms_at_bar": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A count, as miWorkbench returns it (R1B-X3)."
+        },
+        "fvu": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "identical_to_parent": {
+          "description": "Present on a baseline:<kind> head only (2026-11-28; absent on every other head and on a verdict stored before): true when its scores_sha256 equals the parent head's on the same set, so the baseline ranks every row exactly as the parent does. The verdict's rule is unchanged: the baseline stays among those 'improved' must beat, and beating it is the same as beating the parent, which is already required.",
+          "type": "boolean"
+        },
+        "l0": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "label": {
+          "pattern": "^(parent|candidate|control|control:[0-9]+|baseline:[a-z_]+)$",
+          "type": "string"
+        },
+        "recall_at_bar": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scores_sha256": {
+          "description": "P23.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "auroc",
+        "bar",
+        "dead_fraction",
+        "false_alarm_rate",
+        "false_alarms_at_bar",
+        "fvu",
+        "l0",
+        "label",
+        "recall_at_bar",
+        "scores_sha256"
+      ],
+      "type": "object"
+    },
+    "Lineage": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "chain": {
+          "description": "patch_sha256 values from the bundle to this run.",
+          "items": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "parent": {
+          "$ref": "#/$defs/LineageParent"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "provider_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bundle_sha256",
+        "chain",
+        "parent",
+        "provider",
+        "provider_version"
+      ],
+      "type": "object"
+    },
+    "LineageParent": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "bundle",
+            "bundle_zeroed",
+            "candidate",
+            "checkpoint"
+          ],
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "type": "object"
+    },
+    "ObservationTool": {
+      "additionalProperties": false,
+      "properties": {
+        "cost": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 64,
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 16,
+          "type": "string"
+        }
+      },
+      "required": [
+        "cost",
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "Provider": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "An id string such as weightspace, never a module path.",
+          "maxLength": 64,
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 32,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "type": "object"
+    },
+    "Replay": {
+      "additionalProperties": false,
+      "properties": {
+        "content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "of_run_id": {
+          "type": "string"
+        },
+        "patch_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reproduced": {
+          "description": "True exactly when the content_sha256 values are equal.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "content_sha256",
+        "of_run_id",
+        "patch_sha256",
+        "reproduced"
+      ],
+      "type": "object"
+    },
+    "RequestParent": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "bundle",
+            "candidate"
+          ],
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "type": "object"
+    },
+    "RunSensitivity": {
+      "additionalProperties": false,
+      "properties": {
+        "effective": {
+          "description": "unknown is effectively sensitive (P11).",
+          "enum": [
+            "sensitive",
+            "not_sensitive"
+          ],
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "midataworks",
+            "operator_mark",
+            "none"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "sensitive",
+            "not_sensitive",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "effective",
+        "source",
+        "value"
+      ],
+      "type": "object"
+    },
+    "Scorer": {
+      "additionalProperties": false,
+      "properties": {
+        "call_id": {
+          "type": "string"
+        },
+        "contract": {
+          "const": "miworkbench-wsp-scoring-v1",
+          "type": "string"
+        },
+        "metrics_agree": {
+          "type": "boolean"
+        },
+        "owner": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "call_id",
+        "contract",
+        "metrics_agree",
+        "owner"
+      ],
+      "type": "object"
+    },
+    "SelfReported": {
+      "additionalProperties": false,
+      "description": "The library's own counters, never authoritative (P9).",
+      "properties": {
+        "cost_usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tokens": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cost_usd",
+        "tokens"
+      ],
+      "type": "object"
+    },
+    "SetVerdict": {
+      "additionalProperties": false,
+      "properties": {
+        "deltas": {
+          "items": {
+            "$ref": "#/$defs/Delta"
+          },
+          "type": "array"
+        },
+        "excluded_truncated": {
+          "type": "integer"
+        },
+        "heads": {
+          "items": {
+            "$ref": "#/$defs/Head"
+          },
+          "type": "array"
+        },
+        "heldout_uses": {
+          "description": "P24, after this evaluation.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "negatives": {
+          "type": "integer"
+        },
+        "positives": {
+          "description": "From the response's metrics.",
+          "type": "integer"
+        },
+        "primary": {
+          "type": "boolean"
+        },
+        "role": {
+          "enum": [
+            "eval",
+            "everyday_text",
+            "nonsense_text",
+            "calibration",
+            "sae_corpus"
+          ],
+          "type": "string"
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "truncated_fired": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "Information only (G5). A map: one key per head the scorer answered (parent, candidate, control, baseline:<kind>), each the number of the set's truncated rows that fire at that head's bar. Before 2026-11-19 this read as an object with one literal key, label; that shape is still valid.",
+          "type": "object"
+        },
+        "value": {
+          "enum": [
+            "improved",
+            "not_significant",
+            "regressed",
+            "no_change",
+            "unmeasured"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "deltas",
+        "excluded_truncated",
+        "heads",
+        "heldout_uses",
+        "name",
+        "negatives",
+        "positives",
+        "primary",
+        "role",
+        "rows",
+        "truncated_fired",
+        "value"
+      ],
+      "type": "object"
+    },
+    "SubmittedCheck": {
+      "additionalProperties": false,
+      "description": "FU-2 (2026-11-25): the editor's claimed figures (submit's figures) beside the worker's measurement of the submitted weights against the parent (the transcript's submitted_measured line, plan A2). The answer's prose is never parsed. Revision 4 (2026-11-27): an inspect run that submitted having spent no forward pass (no observation tool ran) carries one too, with measured false and nothing stated or compared, so its answer never reads as measured.",
+      "properties": {
+        "checks": {
+          "description": "One entry per figure stated, in the order auroc, recall, false_alarms.",
+          "items": {
+            "$ref": "#/$defs/FigureCheck"
+          },
+          "type": "array"
+        },
+        "compared": {
+          "description": "True when figures were stated, the submitted weights were measured, and on the split the figures name.",
+          "type": "boolean"
+        },
+        "differs": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When compared: true when any stated figure does not match. Null when not compared: nothing to compare is not 'no difference'."
+        },
+        "measured": {
+          "description": "Whether the worker measured the submitted weights (false: no time left, or the measurement failed). On an inspect run (revision 4), always false: the run submitted before any forward pass, so nothing it reports was measured.",
+          "type": "boolean"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "enum": [
+                "train",
+                "validation",
+                "all"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The split the submitted weights were measured on; null when not measured."
+        },
+        "stated": {
+          "description": "Whether the accepted submit stated at least one figure.",
+          "type": "boolean"
+        },
+        "stated_split": {
+          "anyOf": [
+            {
+              "enum": [
+                "train",
+                "validation",
+                "all"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The split the editor's figures name; null when none were stated."
+        }
+      },
+      "required": [
+        "checks",
+        "compared",
+        "differs",
+        "measured",
+        "split",
+        "stated",
+        "stated_split"
+      ],
+      "type": "object"
+    },
+    "SupportSet": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "practice",
+            "practice_train"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "digest",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_usd": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "input_tokens": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "metered_by": {
+          "const": "wsp_gateway",
+          "type": "string"
+        },
+        "output_tokens": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "requests": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "self_reported": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelfReported"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "cost_usd",
+        "input_tokens",
+        "metered_by",
+        "output_tokens",
+        "requests",
+        "self_reported"
+      ],
+      "type": "object"
+    },
+    "Verdict": {
+      "additionalProperties": false,
+      "properties": {
+        "B": {
+          "minimum": 100,
+          "type": "integer"
+        },
+        "ci": {
+          "const": 0.95,
+          "type": "number"
+        },
+        "completeness": {
+          "$ref": "#/$defs/Completeness"
+        },
+        "control_figures": {
+          "$ref": "#/$defs/ControlFigures"
+        },
+        "control_seed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "evaluated_at": {
+          "description": "RFC 3339 UTC.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "guarded_comparisons": {
+          "description": "Recorded for multiplicity (P53, R1B-M18).",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "per_set": {
+          "items": {
+            "$ref": "#/$defs/SetVerdict"
+          },
+          "type": "array"
+        },
+        "primary_metric": {
+          "enum": [
+            "auroc",
+            "fvu"
+          ],
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "request_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "scorer": {
+          "$ref": "#/$defs/Scorer"
+        },
+        "seed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "statistic": {
+          "const": "paired_bootstrap",
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "improved",
+            "not_significant",
+            "regressed",
+            "no_change",
+            "unmeasured"
+          ],
+          "type": "string"
+        },
+        "verdict_id": {
+          "description": "The verdict row; names the run-document snapshot served by ?verdict_id= (P71).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "B",
+        "ci",
+        "completeness",
+        "control_figures",
+        "control_seed",
+        "evaluated_at",
+        "guarded_comparisons",
+        "per_set",
+        "primary_metric",
+        "reasons",
+        "request_sha256",
+        "scorer",
+        "seed",
+        "statistic",
+        "value",
+        "verdict_id"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://hitsai.net/schemas/miforge-wsp-run-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A WSP run document. Every digest in it uses RFC 8785 (rfc8785 0.1.4).",
+  "properties": {
+    "approval": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Approval"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "boot_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{32}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The worker process that ran it (P49)."
+    },
+    "caller_ref": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "miWorkbench's experiment or probe id, echoed and never interpreted; outside request, so it moves no digest (R3B-19, R4A-8)."
+    },
+    "candidate_id": {
+      "anyOf": [
+        {
+          "pattern": "^wspc_[0-9a-f]{12}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The patch's content identity."
+    },
+    "created_at": {
+      "description": "RFC 3339 UTC.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Failure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "forward_passes_used": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "kind": {
+      "const": "miforge.wsp-run/v1",
+      "type": "string"
+    },
+    "lineage": {
+      "$ref": "#/$defs/Lineage"
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "enum": [
+            "candidate",
+            "no_change",
+            "report",
+            "failed"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "patch_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "program_reruns": {
+      "description": "run_ids of every program_rerun of this run's program (P19).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "program_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "replay": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Replay"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "request": {
+      "$ref": "#/$defs/FrozenRequest"
+    },
+    "request_sha256": {
+      "description": "RFC 8785 sha256 of request (P24, P65).",
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "result_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "run_id": {
+      "pattern": "^wsp_[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "run_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "RFC 8785 sha256 of this document as it stood when the verdict was stored, without run_sha256 and program_reruns (P63); null before a verdict."
+    },
+    "sensitivity": {
+      "$ref": "#/$defs/RunSensitivity"
+    },
+    "status": {
+      "enum": [
+        "queued",
+        "pushing",
+        "running",
+        "collecting",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "type": "string"
+    },
+    "stop_reason": {
+      "anyOf": [
+        {
+          "enum": [
+            "submitted",
+            "answered",
+            "max_steps",
+            "token_budget",
+            "cost_budget",
+            "time_budget",
+            "interrupted",
+            "error",
+            "gateway_refused",
+            "worker_lost",
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "submitted_check": {
+      "$ref": "#/$defs/SubmittedCheck",
+      "description": "FU-2 (2026-11-25): present only when the run's transcript has a submitted_measured line carrying the claimed-figures comparison (a session from this revision on that offered submit's figures). Absent for every run taken in before it, so their run_sha256 still reproduces, and for a run whose weights are not measured after submit (a run without version-4 tools, and an inspect that spent a forward pass). Revision 4 (2026-11-27): also present, with measured false, on a completed inspect session or program that submitted with forward_passes_used 0 (no observation tool ran before its answer)."
+    },
+    "transcript_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "usage": {
+      "$ref": "#/$defs/Usage"
+    },
+    "verdict": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Verdict"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "approval",
+    "boot_id",
+    "caller_ref",
+    "candidate_id",
+    "content_sha256",
+    "created_at",
+    "failure",
+    "forward_passes_used",
+    "kind",
+    "lineage",
+    "outcome",
+    "patch_sha256",
+    "program_reruns",
+    "program_sha256",
+    "replay",
+    "request",
+    "request_sha256",
+    "result_sha256",
+    "run_id",
+    "run_sha256",
+    "sensitivity",
+    "status",
+    "stop_reason",
+    "transcript_sha256",
+    "usage",
+    "verdict"
+  ],
+  "title": "miForge WSP run v1",
+  "type": "object"
+}
